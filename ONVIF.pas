@@ -28,45 +28,67 @@ You may use/change/modify the component under 1 conditions:
 unit ONVIF;
 
 interface
+
 uses
   System.Classes, System.SysUtils, System.SyncObjs, System.Messaging,
   System.IOUtils, IdUDPServer, IdGlobal, Soap.XSBuiltIns, IdSocketHandle,
-  IdAuthenticationDigest, Winsock, XmlDoc, XmlIntf, XMLDom,
-  ONVIF.Structure.Device, ONVIF.Structure.Profile,
-  ONVIF.Structure.Capabilities;
+  IdAuthenticationDigest, Winsock, XmlDoc, XmlIntf, XMLDom,System.Math, System.NetConsts,
+  ONVIF.Structure.Device, ONVIF.Structure.Profile,System.Net.HttpClient,System.net.UrlClient,
+  ONVIF.Structure.Capabilities,ONVIF.Structure.PTZ;
 
 CONST ONVIF_ERROR_URL_EMPTY                    = -1000;
       ONVIF_ERROR_SOAP_INVALID                 = -1001;
       ONVIF_ERROR_SOAP_NOBODY                  = -1002;
-      ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND     = -1003;      
+      ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND     = -1003;     
+      ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX     = -1004;
+      ONVIF_ERROR_DELPHI_EXCEPTION             = -1005;
+      ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY           = -1006;
       
 Type
 
-
-  {   https://www.onvif.org/specs/core/ONVIF-Core-Specification.pdf
-      https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v221.pdf
-      https://www.onvif.org/specs/srv/img/ONVIF-Imaging-Service-Spec.pdf?441d4a&441d4a
-
+  {   
     TODO 
-      Preset  
-      Imaging like IR CuT, IRIS Focus
-      Home
-      Move AbsoluteMove,RelativeMove    
-      PRofile parser in record
+      
+      
+      - Imaging 
+         -- IRCut 
+         -- IRIS 
+         -- Focus
+         others --> https://www.onvif.org/specs/srv/img/ONVIF-Imaging-Service-Spec.pdf?441d4a&441d4a
+         
+      - PTZ
+        -- Preset 
+            -- SetPreset
+            -- AddPreset ?? or just use SetPreset 
 
-          AudioEncoderConfiguration  : TAudioEncoderConfiguration;
-          VideoAnalyticsConfiguration: TVideoAnalyticsConfiguration;
-          Extension                  : TExtension;
-          
-          Need example          
-      SystemdateTime
+        -- Home
+        -- Move AbsoluteMove,RelativeMove
+        -- GetServiceCapabilities 
+            --- Flip: Indicates whether or not E-Flip is supported.
+            --- Reverse: Indicates whether or not reversing of PT control direction is supported.
+            --- GetCompatibleConfigurations: Indicates the support for GetCompatibleConfigurations command.
+            --- MoveStatus Indicates that the PTZStatus includes MoveStatus information.
+            --- StatusPosition Indicates that the PTZStatus includes Position information.   
+        -- Events A device supporting PTZ service dispatchs events listed in this chapter through the event 
+        -- PresetTours
+        others --> https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v1712.pdf?441d4a&441d4a
+               --> https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v221.pdf
+
+      https://www.onvif.org/specs/core/ONVIF-Core-Specification.pdf  
+      - PRofile parser in record
+        -- AudioEncoderConfiguration  : TAudioEncoderConfiguration;
+        -= VideoAnalyticsConfiguration: TVideoAnalyticsConfiguration;
+        -- Extension                  : TExtension;          
+          --- Need example  
+                  
+      - SystemdateTime
    }
 
 
   /// <summary>
   ///   Specifies the type of ONVIF address, including device service, media, and PTZ.
   /// </summary>
-  TONVIFAddrType = (atDeviceService, atMedia, atPtz,atDevice);
+  TONVIFAddrType = (atDeviceService, atMedia, atPtz);
 
   /// <summary>
   ///   Specifies the type of ONVIF PTZ (Pan-Tilt-Zoom) command, including left, top, right,
@@ -81,7 +103,6 @@ Type
   ///   Possible values are: Continuous Move, Relative Move, and Absolute Move.
   /// </remarks>  
   TONVIF_PTZ_MoveType = (opmvContinuousMove,opmvtRelativeMove,opmvtAbsoluteMove);
-
 
   /// <summary>
   ///   Enumerates the logging levels for ONVIF events.
@@ -109,7 +130,164 @@ Type
   /// <remarks>
   ///   This procedure is used to write logs with detailed information based on the specified parameters.
   /// </remarks>  
-  TEventWriteLog = procedure (Const Funzione,Descrizione:String;Livello : TPONVIFLivLog;IsVerboseLog:boolean=False) of object;  
+  TEventWriteLog    = procedure (Const aMethodName,aDescription:String;aLevel : TPONVIFLivLog;IsVerboseLog:boolean=False) of object;
+
+  /// <summary>
+  ///   Defines a procedure type for handling token events with specific parameters.
+  /// </summary>
+  /// <param name="aToken">
+  ///   The token string encountered during processing of profiles.
+  /// </param>
+  /// <param name="aSetForDefault">
+  ///   A flag indicating whether the token is set for the default for ONVIF command.
+  /// </param>
+  /// <remarks>
+  ///   This procedure type is used for handling token events, providing information about
+  ///   the encountered token on profiles and allowing modification of the default behavior.
+  /// </remarks>
+  TEventTokenFound  = procedure (const aName,aToken : String;var aSetForDefault:Boolean) of object;
+  
+  TONVIFManager = class;
+    
+  TONVIFPTZManager = Class
+
+  private
+    FONVIFManager : TONVIFManager;
+    FPresentList  : TPTZPresetList;
+    /// <summary>
+    ///   Prepares the ONVIF PTZ command for retrieving the list of preset positions.
+    /// </summary>
+    /// <returns>ONVIF PTZ command string for getting the list of preset positions.</returns>    
+    function PrepareGetPresetList: String;   
+
+    /// <summary>
+    ///   Prepares the ONVIF PTZ command for moving the camera to the specified preset position.
+    /// </summary>
+    /// <param name="aIndexPreset">Index of the preset position to which the camera should move.</param>
+    /// <returns>ONVIF PTZ command string for moving to the specified preset position.</returns>    
+    function PrepareGotoPreset(const aTokenPreset : String):String;
+
+    /// <summary>
+    ///   Prepares the ONVIF PTZ command for removing the specified preset position.
+    /// </summary>
+    /// <param name="aIndexPreset">Index of the preset position to be removed.</param>
+    /// <returns>ONVIF PTZ command string for removing the specified preset position.</returns>    
+    function PrepareRemovePreset(const aTokenPreset: String): String;     
+
+    /// <summary>
+    ///   Prepares an ONVIF PTZ (Pan-Tilt) start move request based on the specified command.
+    /// </summary>
+    /// <param name="aCommand">
+    ///   The command to be included in the PTZ start move request.
+    /// </param>
+    /// <returns>
+    ///   An XML-formatted string representing the PTZ start move request.
+    /// </returns>
+    function PrepareStartMoveRequest(const aCommand: String): String;
+
+    /// <summary>
+    ///   Prepares an ONVIF PTZ stop move request.
+    /// </summary>
+    /// <returns>
+    ///   An XML-formatted string representing the PTZ stop move request.
+    /// </returns>
+    function PrepareStopMoveRequest: String;
+
+    /// <summary>
+    ///   Prepares an ONVIF PTZ start zoom request based on the specified command.
+    /// </summary>
+    /// <param name="aCommand">
+    ///   The command to be included in the PTZ start zoom request.
+    /// </param>
+    /// <returns>
+    ///   An XML-formatted string representing the PTZ start zoom request.
+    /// </returns>
+    function PrepareStartZoomRequest(const aCommand: String): String;
+    function isValidToken: Boolean;
+    
+  public
+    /// <summary>
+    ///   Constructor for initializing a new instance of the ONVIF PTZ Manager.
+    /// </summary>
+    /// <param name="aONVIFManager">Reference to the parent ONVIF manager instance.</param>  
+    constructor Create(aONVIFManager : TONVIFManager);
+
+    /// <summary>
+    ///   Destructor for freeing resources associated with the ONVIF PTZ Manager.
+    /// </summary>    
+    Destructor Destroy;override;
+    {Preset}
+    /// <summary>
+    ///   Loads the list of presets associated with the PTZ functionality.
+    /// </summary>
+    /// <returns>True if the preset list is successfully loaded, False otherwise.</returns>
+    function LoadPresetList: Boolean;    
+
+    /// <summary>
+    ///   Moves the PTZ camera to the specified preset position.
+    /// </summary>
+    /// <param name="aIndexPreset">Index of the preset position to which the camera should move.</param>
+    /// <returns>True if the camera successfully moves to the preset position, False otherwise.</returns>    
+    function GotoToPreset(const aIndexPreset : Integer) : Boolean;
+
+
+    /// <summary>
+    ///   Removes the specified preset position from the PTZ camera's preset list.
+    /// </summary>
+    /// <param name="aIndexPreset">Index of the preset position to be removed.</param>
+    /// <returns>True if the preset is successfully removed, False otherwise.</returns>    
+    function RemovePreset(const aIndexPreset : Integer) : Boolean;
+
+    /// <summary>
+    ///   Gets the list of PTZ presets associated with the PTZ manager.
+    /// </summary>
+    /// <remarks>
+    ///   The <c>PresetList</c> property provides access to the list of PTZ presets associated with the
+    ///   PTZ manager. PTZ presets represent specific camera positions that can be saved and recalled
+    ///   using the PTZ functionality. The property allows the application to interact with and manage
+    ///   the list of available PTZ presets.
+    /// </remarks>    
+    property PresetList : TPTZPresetList read FPresentList;
+    {PTZ}
+    /// <summary>
+    ///   ONVIF PTZ Zoom start operation.
+    /// </summary>
+    /// <param name="aInZoom">
+    ///   Indicates whether it is an "in" zoom operation (True) or "out" zoom operation (False).
+    /// </param>
+    /// <param name="aResultStr">
+    ///   Returns the result string after executing the PTZ start zoom operation.
+    /// <returns>
+    ///   True if the PTZ start zoom operation is executed successfully; False otherwise.
+    /// </returns>
+    function Zoom(aMoveType:TONVIF_PTZ_MoveType;aInZoom: Boolean): Boolean;
+
+    /// <summary>
+    ///   Initiates an ONVIF PTZ (Pan-Tilt) move operation based on the specified command.
+    /// </summary>
+    /// <param name="acommand">
+    ///   The type of PTZ move command to be executed.
+    /// </param>
+    /// <param name="aResultStr">
+    ///   Returns the result string after executing the PTZ move operation.
+    /// </param>
+    /// <returns>
+    ///   True if the PTZ move operation is executed successfully; False otherwise.
+    /// </returns>
+    function StartMove(aMoveType:TONVIF_PTZ_MoveType;const acommand: TONVIF_PTZ_CommandType): Boolean;
+
+    /// <summary>
+    ///   Stops an ongoing ONVIF PTZ (Pan-Tilt-Zoom) move operation.
+    /// </summary>
+    /// <param name="aResultStr">
+    ///   Returns the result string after stopping the PTZ move operation.
+    /// </param>
+    /// <returns>
+    ///   True if the PTZ move operation is successfully stopped; False otherwise.
+    /// </returns>
+    function Stop: Boolean; 
+   
+  End;
     
   /// <summary>
   ///   Represents a manager class for handling ONVIF-related functionalities.
@@ -117,18 +295,26 @@ Type
   TONVIFManager = class
   private
 
-    FUrl                 : String;
-    FLogin               : String;
-    FPassword            : String;
-    FToken               : String;
-    FLastResponse        : String;
-    FLastStatusCode      : Integer;
-    FSaveResponseOnDisk  : Boolean;
-    FSpeed               : Byte;
-    FDevice              : TDeviceInformation;
-    FOnWriteLog          : TEventWriteLog; 
-    FProfiles            : TProfiles;
-    FCapabilities        : TCapabilitiesONVIF;
+    FUrl                   : String;
+    FLogin                 : String;
+    FPassword              : String;
+    FToken                 : String;
+    FLastResponse          : String;
+    FPathFileResponseOnDisk: String;
+    FSaveResponseOnDisk    : Boolean;
+    FIsFixedToken          : Boolean;
+    FLastStatusCode        : Integer;
+    FSpeed                 : Byte;
+    FDevice                : TDeviceInformation;
+
+    FProfiles              : TProfiles;
+    FCapabilities          : TCapabilitiesONVIF;
+    FPTZ                   : TONVIFPTZManager;
+    {Event}
+    FOnWriteLog            : TEventWriteLog;
+    FOnGetAllInfo          : TNotifyEvent; 
+    FOnProfileTokenFound   : TEventTokenFound;
+    
     /// <summary>
     ///   Calculates the password digest based on the provided parameters.
     /// </summary>
@@ -207,47 +393,11 @@ Type
     ///   A string containing the XML-formatted request for device information.
     /// </returns>
     function PrepareGetDeviceInformationRequest: String;
-    /// <summary>
-    ///   Retrieves device information and returns a Boolean indicating the success of the operation.
-    /// </summary>
-    /// <returns>
-    ///   True if the device information is successfully retrieved; False otherwise, compile TDeviceInformation record.
-    /// </returns>    
-    function GetDeviceInformation: Boolean;
+
     /// <summary>
     ///   Resets the state or configuration of internal record like TDeviceInformation.
     /// </summary>    
     procedure Reset;
-    {PTZ}
-    /// <summary>
-    ///   Prepares an ONVIF PTZ (Pan-Tilt) start move request based on the specified command.
-    /// </summary>
-    /// <param name="aCommand">
-    ///   The command to be included in the PTZ start move request.
-    /// </param>
-    /// <returns>
-    ///   An XML-formatted string representing the PTZ start move request.
-    /// </returns>
-    function PreparePTZ_StartMoveRequest(const aCommand: String): String;
-
-    /// <summary>
-    ///   Prepares an ONVIF PTZ stop move request.
-    /// </summary>
-    /// <returns>
-    ///   An XML-formatted string representing the PTZ stop move request.
-    /// </returns>
-    function PreparePTZ_StopMoveRequest: String;
-
-    /// <summary>
-    ///   Prepares an ONVIF PTZ start zoom request based on the specified command.
-    /// </summary>
-    /// <param name="aCommand">
-    ///   The command to be included in the PTZ start zoom request.
-    /// </param>
-    /// <returns>
-    ///   An XML-formatted string representing the PTZ start zoom request.
-    /// </returns>
-    function PreparePTZ_StartZoomRequest(const aCommand: String): String;
 
     /// <summary>
     ///   Executes an ONVIF request using the provided address, input stream, and output stream.
@@ -264,7 +414,7 @@ Type
     /// <returns>
     ///   True if the request is executed successfully; False otherwise.
     /// </returns>
-    function ExecuteRequest(const Addr: String; const InStream, OutStream: TStringStream): Boolean; overload;
+    function ExecuteRequest(const aAddr: String; const aInStream, aOutStream: TStringStream): Boolean; overload;
 
     /// <summary>
     ///   Executes an ONVIF request using the provided address and request string.
@@ -281,7 +431,7 @@ Type
     /// <returns>
     ///   True if the request is executed successfully; False otherwise.
     /// </returns>
-    function ExecuteRequest(const Addr, Request: String; var Answer: String): Boolean; overload;
+    function ExecuteRequest(const aAddr, aRequest: String; var aAnswer: String): Boolean; overload;
 
     /// <summary>
     ///   Checks and handles an auxiliary command.
@@ -303,14 +453,7 @@ Type
     ///   The prepared GetCapabilities request string.
     /// </returns>
     function PrepareGetCapabilitiesRequest: String;
-
-    /// <summary>
-    ///   Retrieves and processes capabilities for the current ONVIF device.
-    /// </summary>
-    /// <returns>
-    ///   Returns True if the capabilities are successfully retrieved and processed; otherwise, returns False.
-    /// </returns>   
-    function GetCapabilities: Boolean;    
+   
 
     /// <summary>
     ///   Writes a log entry with specified parameters.
@@ -327,7 +470,7 @@ Type
     /// <param name="aIsVerboseLog">
     ///   Indicates whether the log entry is verbose. Default is False.
     /// </param>
-    procedure DoWriteLog(const aFunction, aDescription: String; aLivel: TPONVIFLivLog; aIsVerboseLog: boolean = False);
+    procedure DoWriteLog(const aFunction, aDescription: String; aLevel: TPONVIFLivLog; aIsVerboseLog: boolean = False);
 
     /// <summary>
     ///   Checks if the set URL is valid for ONVIF communication.
@@ -383,7 +526,50 @@ Type
     ///   Resets the ONVIF profiles information to default values.
     /// </summary>
     procedure ResetProfiles;
-       
+    
+    /// <summary>
+    ///   Executes the GetAllInfo event, triggering the retrieval of ONVIF information by ReadInfoAsync.
+    /// </summary>    
+    procedure DoGetAllInfo;
+
+    /// <summary>
+    ///   Retrieves the value of a child node within a specified parent node.
+    /// </summary>
+    /// <param name="ParentNode">
+    ///   The parent XML node from which to retrieve the child node value.
+    /// </param>
+    /// <param name="ChildNodeName">
+    ///   The name of the child node whose value is to be retrieved.
+    /// </param>
+    /// <returns>
+    ///   The string value of the specified child node if found; otherwise, an empty string.
+    /// </returns>
+    /// <remarks>
+    ///   Use this function to conveniently obtain the value of a specific child node within
+    ///   a given parent node. If the specified child node does not exist, the function
+    ///   returns an empty string.
+    /// </remarks>    
+    function GetChildNodeValue(const ParentNode: IXMLNode;const ChildNodeName: string): string;
+
+
+    /// <summary>
+    ///   Retrieves the value of a specified attribute from an XML node.
+    /// </summary>
+    /// <param name="Node">
+    ///   The XML node from which to retrieve the attribute value.
+    /// </param>
+    /// <param name="AttributeName">
+    ///   The name of the attribute whose value is to be retrieved.
+    /// </param>
+    /// <returns>
+    ///   The string value of the specified attribute if found; otherwise, an empty string.
+    /// </returns>
+    /// <remarks>
+    ///   Use this function to conveniently obtain the value of a specific attribute within
+    ///   a given XML node. If the specified attribute does not exist, the function returns
+    ///   an empty string.
+    /// </remarks>    
+    function GetAttribute(const Node: IXMLNode;const AttributeName: string): string;       
   public
     /// <summary>
     ///   Initializes a new instance of the TONVIFManager class with the specified ONVIF service details.
@@ -415,45 +601,38 @@ Type
     ///   The security token for the ONVIF service.
     /// </param>
     constructor Create(const aUrl, aLogin, aPassword, aToken: String);overload;
+    
+    /// <summary>
+    ///   Destructor for the class instance.
+    /// </summary>
+    destructor Destroy;override;
 
     /// <summary>
-    ///   ONVIF PTZ Zoom start operation.
-    /// </summary>
-    /// <param name="aInZoom">
-    ///   Indicates whether it is an "in" zoom operation (True) or "out" zoom operation (False).
-    /// </param>
-    /// <param name="aResultStr">
-    ///   Returns the result string after executing the PTZ start zoom operation.
-    /// <returns>
-    ///   True if the PTZ start zoom operation is executed successfully; False otherwise.
-    /// </returns>
-    function PTZ_StartZoom(aMoveType:TONVIF_PTZ_MoveType;aInZoom: Boolean): Boolean;
+    ///   Retrieves device information ,Capabilities and  Profiles
+    /// </summary>    
+    procedure ReadInfo;
 
     /// <summary>
-    ///   Initiates an ONVIF PTZ (Pan-Tilt) move operation based on the specified command.
-    /// </summary>
-    /// <param name="acommand">
-    ///   The type of PTZ move command to be executed.
-    /// </param>
-    /// <param name="aResultStr">
-    ///   Returns the result string after executing the PTZ move operation.
-    /// </param>
-    /// <returns>
-    ///   True if the PTZ move operation is executed successfully; False otherwise.
-    /// </returns>
-    function PTZ_StartMove(aMoveType:TONVIF_PTZ_MoveType;const acommand: TONVIF_PTZ_CommandType): Boolean;
+    ///   Retrieves device information ,Capabilities and  Profiles in other  thread and fire event OnGetAllInfo
+    /// </summary>    
+    procedure ReadInfoAsync;    
 
     /// <summary>
-    ///   Stops an ongoing ONVIF PTZ (Pan-Tilt-Zoom) move operation.
+    ///   Retrieves device information and returns a Boolean indicating the success of the operation.
     /// </summary>
-    /// <param name="aResultStr">
-    ///   Returns the result string after stopping the PTZ move operation.
-    /// </param>
     /// <returns>
-    ///   True if the PTZ move operation is successfully stopped; False otherwise.
-    /// </returns>
-    function PTZ_StopMove: Boolean;
-
+    ///   True if the device information is successfully retrieved; False otherwise, compile TDeviceInformation record.
+    /// </returns>    
+    function GetDeviceInformation: Boolean;
+    
+    /// <summary>
+    ///   Retrieves and processes capabilities for the current ONVIF device.
+    /// </summary>
+    /// <returns>
+    ///   Returns True if the capabilities are successfully retrieved and processed; otherwise, returns False.
+    /// </returns>   
+    function GetCapabilities: Boolean; 
+    
     /// <summary>
     ///   Retrieves the profiles associated with the ONVIF device.
     /// </summary>
@@ -468,17 +647,17 @@ Type
     /// <summary>
     ///   Gets or sets the speed parameter for PTZ operations.
     /// </summary>
-    property Speed                : Byte               read FSpeed              write FSpeed;
+    property Speed                   : Byte                read FSpeed                   write FSpeed;
 
     /// <summary>
     ///   Gets or sets the URL of the ONVIF service.
     /// </summary>
-    property Url                  : String             read Furl                write SetUrl;
+    property Url                     : String              read Furl                     write SetUrl;
 
     /// <summary>
     ///   Gets or sets the token of the ONVIF camera.
     /// </summary>    
-    property Token                : String             read FToken              write FToken;
+    property Token                   : String              read FToken                   write FToken;
         
     
     /// <summary>
@@ -487,15 +666,48 @@ Type
     /// <remarks>
     ///   Use this event to handle log writing with detailed information based on the specified parameters.
     /// </remarks>
-    property OnWriteLog           : TEventWriteLog     read FOnWriteLog         write FOnWriteLog;
+    property OnWriteLog               : TEventWriteLog     read FOnWriteLog              write FOnWriteLog;
     
+    /// <summary>
+    ///   Event triggered when retrieving comprehensive ONVIF information through the GetAllInfo method.
+    /// </summary>
+    /// <remarks>
+    ///   The <c>OnGetAllInfo</c> event is triggered when the GetAllInfo method is executed, facilitating
+    ///   the retrieval of detailed ONVIF information. By assigning a handler to this event, the application
+    ///   can respond to the completion of the GetAllInfo operation, allowing for further processing or
+    ///   presentation of the obtained ONVIF data.
+    /// </remarks>    
+    property OnGetAllInfo             : TNotifyEvent       read FOnGetAllInfo            write FOnGetAllInfo;
+
+    /// <summary>
+    ///   Property representing an event handler for the token found in profiles.
+    /// </summary>
+    /// <remarks>
+    ///   Use this property to assign a handler for the token found event in profiles.
+    ///   The assigned handler should be of type TEventTokenFound, allowing customization
+    ///   of the default behavior for ONVIF commands related to profile tokens.
+    /// </remarks>    
+    property OnProfileTokenFound      : TEventTokenFound   read FOnProfileTokenFound     write FOnProfileTokenFound;    
+
     /// <summary>
     ///   Gets or sets whether to save the last HTTP response on disk.
     /// </summary>
     /// <remarks>
     ///   Set this property to True if you want to save the last HTTP response on disk.
     /// </remarks>
-    property SaveResponseOnDisk   : Boolean            read FSaveResponseOnDisk write FSaveResponseOnDisk;  
+    property SaveResponseOnDisk       : Boolean            read FSaveResponseOnDisk      write FSaveResponseOnDisk;  
+
+    /// <summary>
+    ///   Gets or sets the file path for storing ONVIF response data on disk default DumpResponse.log
+    /// </summary>
+    /// <remarks>
+    ///   The property <c>PathFileResponseOnDisk</c> is used to specify the location where ONVIF
+    ///   response data will be saved on disk. This path can be set to a directory or a full file path,
+    ///   depending on the application's requirements. Responses from ONVIF operations, such as
+    ///   device information retrieval or profile creation, may be stored at this location for reference
+    ///   or debugging purposes.
+    /// </remarks>
+    property PathFileResponseOnDisk   : String             read FPathFileResponseOnDisk  write FPathFileResponseOnDisk;
 
     /// <summary>
     ///   Gets the last HTTP status code received.
@@ -503,7 +715,7 @@ Type
     /// <remarks>
     ///   Use this property to retrieve the last HTTP status code received during communication.
     /// </remarks>    
-    property LastStatusCode       : Integer            read FLastStatusCode;
+    property LastStatusCode           : Integer            read FLastStatusCode;
     
     /// <summary>
     ///   Gets the last HTTP response received.
@@ -511,12 +723,12 @@ Type
     /// <remarks>
     ///   Use this property to retrieve the last HTTP response received during communication.
     /// </remarks>    
-    property LastResponse         : String             read FLastResponse;  
+    property LastResponse             : String             read FLastResponse;  
 
     /// <summary>
     ///   Gets information about the ONVIF device.
     /// </summary>
-    property Device               : TDeviceInformation read FDevice;
+    property Device                   : TDeviceInformation read FDevice;
     
     /// <summary>
     ///   Gets the profiles associated with the ONVIF communication.
@@ -524,15 +736,27 @@ Type
     /// <remarks>
     ///   Use this property to retrieve the profiles associated with the ONVIF communication.
     /// </remarks>    
-    property Profiles             : TProfiles          read FProfiles;  
-
+    property Profiles                 : TProfiles          read FProfiles;  
+    
     /// <summary>
     ///   Represents the ONVIF capabilities of the device.
     /// </summary>
     /// <remarks>
     ///   The ONVIF capabilities, including device, events, PTZ, and extension capabilities.
     /// </remarks>     
-    property Capabilities         : TCapabilitiesONVIF read FCapabilities; 
+    property Capabilities             : TCapabilitiesONVIF read FCapabilities; 
+    
+    /// <summary>
+    ///   Gets the ONVIF Pan-Tilt-Zoom (PTZ) manager for controlling PTZ-related functionalities.
+    /// </summary>
+    /// <remarks>
+    ///   The property <c>PTZ</c> provides access to the ONVIF Pan-Tilt-Zoom manager, allowing the
+    ///   application to control PTZ-related functionalities such as camera movement and zoom levels.
+    ///   The PTZ manager encapsulates ONVIF commands and operations related to pan, tilt, and zoom
+    ///   controls, providing a convenient interface for managing PTZ functionality in an ONVIF-enabled
+    ///   environment.
+    /// </remarks>
+    property PTZ                      : TONVIFPTZManager   read FPTZ;
   end;
 
 implementation
@@ -549,21 +773,28 @@ end;
 
 constructor TONVIFManager.Create(const aUrl,aLogin,aPassword,aToken:String);
 begin
-  FLogin              := aLogin;
-  FSaveResponseOnDisk := False;
-  FPassword           := aPassword;
-  FToken              := aToken;
-  Url                 := aUrl;    // execute setUrl;  
-  FSpeed              := 6;
+  FLogin                  := aLogin;
+  FSaveResponseOnDisk     := False;
+  FPathFileResponseOnDisk := 'DumpResponse.log';
+  FPassword               := aPassword;
+  FToken                  := aToken;
+  FIsFixedToken           := not FToken.IsEmpty;
+  FPTZ                    := TONVIFPTZManager.Create(self);
+  Url                     := aUrl;    // execute setUrl;  
+  FSpeed                  := 6;
 end;
 
-procedure TONVIFManager.DoWriteLog(const aFunction, aDescription: String;aLivel: TPONVIFLivLog; aIsVerboseLog: boolean=false);
+destructor TONVIFManager.Destroy;
+begin
+  FreeAndNil(FPTZ);
+  inherited;
+end;
+
+procedure TONVIFManager.DoWriteLog(const aFunction, aDescription: String;aLevel: TPONVIFLivLog; aIsVerboseLog: boolean=false);
 begin
   if Assigned(FOnWriteLog) then
-    FOnWriteLog(aFunction,aDescription,aLivel,aIsVerboseLog)
+    FOnWriteLog(aFunction,aDescription,aLevel,aIsVerboseLog)
 end;
-
-
 
 procedure TONVIFManager.CheckAuxiliaryCommand;
 begin
@@ -590,28 +821,45 @@ begin
   aPasswordDigest := TEncoding.ANSI.GetString(LDigest);
 end;
 
+procedure TONVIFManager.ReadInfo;
+begin
+  {TODO get system date time to be use for password? }
+  GetCapabilities;
+  GetDeviceInformation;
+  GetProfiles;
+  if not Token.Trim.IsEmpty then
+  begin
+    {TODO Get preset}
+    CheckAuxiliaryCommand;
+  end;  
+end;
+
+procedure TONVIFManager.DoGetAllInfo;
+begin
+  if Assigned(FOnGetAllInfo) then
+    FOnGetAllInfo(Self);
+end;
+
+procedure TONVIFManager.ReadInfoAsync;
+var LThread: TThread;
+begin
+  LThread := TThread.CreateAnonymousThread(
+    procedure
+    begin
+      ReadInfo;
+      TThread.Queue(nil, DoGetAllInfo);
+    end
+  );
+  LThread.Start;
+end;
+
 procedure TONVIFManager.SetUrl(const aValue: String);
 begin
   if Furl <> aValue then
   begin
     if aValue.Trim.IsEmpty then
-      Reset
-    else
-    begin
-      Furl := aValue;
-      {TODO get system date time to be use for password? }
-      {TODO GetCapabilities}
-      GetCapabilities;
-      GetDeviceInformation;
-      GetProfiles;
-      
-
-      if not Token.Trim.IsEmpty then
-      begin
-        {TODO Get preset}
-        CheckAuxiliaryCommand;
-      end;
-    end;
+      Reset;
+    Furl := aValue;
   end;
 end;
 
@@ -649,6 +897,8 @@ begin
     ONVIF_ERROR_SOAP_INVALID             : result := 'Root node is not SOAP envelope';
     ONVIF_ERROR_SOAP_NOBODY              : result := 'Body SOAP node not found';
     ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND : Result := 'SOAP Fault code not found';
+    ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX : Result := 'Index of preset is out of range';
+    ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY       : Result := 'Token is empty';
   else
     result := 'Unknow error' 
   end;
@@ -656,10 +906,9 @@ end;
 
 function TONVIFManager.GetUrlByType(const aUrlType: TONVIFAddrType): string;
 CONST   
-      URL_DEVICE_SERVICE = 'device_service';
-      URL_PTZ_SERVICE    = 'ptz_service';  
-      URL_MEDIA          = 'media';
-      URL_DEVICE         = 'device';
+      URL_DEVICE_SERVICE = 'onvif/device_service';
+      URL_PTZ_SERVICE    = 'onvif/ptz_service';  
+      URL_MEDIA          = 'onvif/media';
 
 Var LUri: TIdURI;
 begin
@@ -672,7 +921,6 @@ begin
       atDeviceService: LUri.Document := URL_DEVICE_SERVICE;
       atMedia        : LUri.Document := URL_MEDIA;
       atPtz          : LUri.Document := URL_PTZ_SERVICE;
-      atDevice       : LUri.Document := URL_DEVICE;
     end;
     Result := LUri.Uri;                                  
   finally
@@ -681,8 +929,8 @@ begin
 end;
 
 function TONVIFManager.GetSoapXMLConnection:String;
-CONST XML_SOAP_CONNECTION: String =
-    '<?xml version="1.0"?> ' + 
+CONST XML_SOAP_CONNECTION_OLD: String =
+    '<?xml version="1.0" encoding="UTF-8"?> ' + 
     '<soap:Envelope ' +        
     'xmlns:soap="http://www.w3.org/2003/05/soap-envelope" ' + 
     'xmlns:wsdl="http://www.onvif.org/ver10/media/wsdl">' + 
@@ -697,6 +945,53 @@ CONST XML_SOAP_CONNECTION: String =
     '</Security> ' +   
     '</soap:Header>' + 
     '<soap:Body xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"> ';
+CONST XML_SOAP_CONNECTION: String =
+    '<?xml version="1.0" encoding="UTF-8"?> ' + 
+    '<soap:Envelope ' + 
+    ' xmlns:soap="http://www.w3.org/2003/05/soap-envelope"'+ 
+    ' xmlns:SOAP-ENC="http://www.w3.org/2003/05/soap-encoding"'+
+    ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'+
+    ' xmlns:xsd="http://www.w3.org/2001/XMLSchema"'+ 
+    ' xmlns:c14n="http://www.w3.org/2001/10/xml-exc-c14n#"'+
+    ' xmlns:xenc="http://www.w3.org/2001/04/xmlenc#"'+
+    ' xmlns:wsc="http://schemas.xmlsoap.org/ws/2005/02/sc"'+
+    ' xmlns:ds="http://www.w3.org/2000/09/xmldsig#"'+ 
+    ' xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"'+
+    ' xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"'+
+    ' xmlns:wsdd="http://schemas.xmlsoap.org/ws/2005/04/discovery"'+
+    ' xmlns:chan="http://schemas.microsoft.com/ws/2005/02/duplex"'+
+    ' xmlns:wsa5="http://www.w3.org/2005/08/addressing"'+
+    ' xmlns:xmime="http://tempuri.org/xmime.xsd"'+
+    ' xmlns:xop="http://www.w3.org/2004/08/xop/include"'+
+    ' xmlns:tt="http://www.onvif.org/ver10/schema"'+ 
+    ' xmlns:wsrfbf="http://docs.oasis-open.org/wsrf/bf-2"'+
+    ' xmlns:wstop="http://docs.oasis-open.org/wsn/t-1"'+
+    ' xmlns:wsrfr="http://docs.oasis-open.org/wsrf/r-2"'+
+    ' xmlns:tdn="http://www.onvif.org/ver10/network/wsdl"'+
+    ' xmlns:tds="http://www.onvif.org/ver10/device/wsdl"'+
+    ' xmlns:tev="http://www.onvif.org/ver10/events/wsdl"'+
+    ' xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2"'+
+    ' xmlns:timg="http://www.onvif.org/ver20/imaging/wsdl"'+
+    ' xmlns:tls="http://www.onvif.org/ver10/display/wsdl"'+
+    ' xmlns:tmd="http://www.onvif.org/ver10/deviceIO/wsdl"'+
+    ' xmlns:tptz="http://www.onvif.org/ver20/ptz/wsdl"'+
+    ' xmlns:trc="http://www.onvif.org/ver10/recording/wsdl"'+
+    ' xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" '+
+    ' xmlns:trp="http://www.onvif.org/ver10/replay/wsdl"'+
+    ' xmlns:trt="http://www.onvif.org/ver10/media/wsdl" '+
+    ' xmlns:trv="http://www.onvif.org/ver10/receiver/wsdl"'+
+    ' xmlns:tse="http://www.onvif.org/ver10/search/wsdl"> '+ 
+    '<soap:Header>' + 
+    '<wsse:Security soap:mustUnderstand="true">' + 
+    '<wsse:UsernameToken> ' + 
+    '<wsse:Username>%s</wsse:Username> ' + 
+    '<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">%s</wsse:Password> ' +
+    '<wsse:Nonce>%s</wsse:Nonce> ' +
+    '<wsu:Created>%s</wsu:Created>' +
+    '</wsse:UsernameToken> ' + 
+    '</wsse:Security> ' +   
+    '</soap:Header>' + 
+    '<soap:Body xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"> ';
 var LPasswordDigest : String; 
     LNonce          : String;
     LCreated        : String;
@@ -706,10 +1001,9 @@ begin
 end;
 
 function TONVIFManager.PrepareGetCapabilitiesRequest: String;
-const GET_CAPABILITIES = '<GetCapabilities'+
-                         ' xmlns="http://www.onvif.org/ver10/device/wsdl">'+
-                         '<Category>All</Category>'+
-                         '</GetCapabilities>'+
+const GET_CAPABILITIES = '<tds:GetCapabilities>'+
+                         '<tds:Category>All</tds:Category>'+
+                         '</tds:GetCapabilities>'+
                          '</soap:Body>'+
                          '</soap:Envelope>';
 begin
@@ -722,24 +1016,13 @@ var LResultStr         : String;
     LSoapBodyNode      : IXMLNode;
     LCapabilitieNode   : IXMLNode;
     LNodeTmp1          : IXMLNode;
-    LNodeTmp2          : IXMLNode;
-
-    function GetChildNodeValue(const ParentNode: IXMLNode; const ChildNodeName: string): string;
-    begin
-      Result := '';
-      if Assigned(ParentNode) then
-      begin
-        // Check if the child node exists before accessing its value
-        if ParentNode.ChildNodes.IndexOf(ChildNodeName) > -1 then
-          Result := ParentNode.ChildNodes[ChildNodeName].Text;
-      end;
-    end;      
+    LNodeTmp2          : IXMLNode;    
 begin
   Result := false;
 
   ResetCapabilities;
   if not UrlIsValid then Exit;  
-  Result := ExecuteRequest(GetUrlByType(atDevice), PrepareGetCapabilitiesRequest, LResultStr);
+  Result := ExecuteRequest(GetUrlByType(atDeviceService), PrepareGetCapabilitiesRequest, LResultStr);
 
   if Result then
   begin
@@ -847,11 +1130,31 @@ end;
 
 
 function TONVIFManager.PrepareGetProfilesRequest: String;
-const GET_PROFILES = '<GetProfiles xmlns="http://www.onvif.org/ver10/media/wsdl" /> ' + 
+const GET_PROFILES = '<trt:GetProfiles/> ' + 
                       '</soap:Body> ' +
                       '</soap:Envelope>';
 begin
   Result := GetSoapXMLConnection + GET_PROFILES
+end;
+
+function TONVIFManager.GetChildNodeValue(const ParentNode: IXMLNode; const ChildNodeName: string): string;
+var LTmpIndex : Integer;
+begin
+  Result := String.Empty;
+  if Assigned(ParentNode) then
+  begin
+    // Check if the child node exists before accessing its value
+    LTmpIndex := ParentNode.ChildNodes.IndexOf(ChildNodeName,'') ;
+    if LTmpIndex > -1 then
+      Result := ParentNode.ChildNodes[LTmpIndex].Text
+  end;
+end; 
+
+function TONVIFManager.GetAttribute(const Node: IXMLNode; const AttributeName: string): string;
+begin
+  Result := String.empty;
+  if Assigned(Node) and Node.HasAttribute(AttributeName) then
+    Result := Node.Attributes[AttributeName];
 end;
 
 function TONVIFManager.GetProfiles: Boolean;
@@ -859,7 +1162,6 @@ var LResultStr         : String;
     LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LProfilesNode      : IXMLNode;
-    LTokenNode         : IXMLNode;
     LChildNodeRoot     : IXMLNode; 
     LChildNodeNode     : IXMLNode;
     LChildNodeNode2    : IXMLNode;
@@ -867,24 +1169,7 @@ var LResultStr         : String;
     I                  : Integer;
     LProfile           : TProfile;
     LCurrentIndex      : integer;
-
-    function GetAttribute(const Node: IXMLNode; const AttributeName: string): string;
-    begin
-      Result := '';
-      if Assigned(Node) and Node.HasAttribute(AttributeName) then
-        Result := Node.Attributes[AttributeName];
-    end;
-
-    function GetChildNodeValue(const ParentNode: IXMLNode; const ChildNodeName: string): string;
-    begin
-      Result := '';
-      if Assigned(ParentNode) then
-      begin
-        // Check if the child node exists before accessing its value
-        if ParentNode.ChildNodes.IndexOf(ChildNodeName) > -1 then
-          Result := ParentNode.ChildNodes[ChildNodeName].Text;
-      end;
-    end;    
+    LSetForDefault     : Boolean;   
 begin
   Result := False;
   ResetProfiles;
@@ -911,26 +1196,26 @@ begin
     begin
       Result := LProfilesNode.ChildNodes.Count > 0;   
 
-      if FToken.Trim.IsEmpty then
-        SetLength(FProfiles,LProfilesNode.ChildNodes.Count)
-      else
-        SetLength(FProfiles,1);
-        
-      LCurrentIndex := 0;  
+      SetLength(FProfiles,LProfilesNode.ChildNodes.Count);
+
+      LCurrentIndex  := 0;  
+      LSetForDefault := not FIsFixedToken;
       for I := 0 to LProfilesNode.ChildNodes.Count -1 do
       begin  
       
-        LProfile.token :=  String(LProfilesNode.ChildNodes[I].Attributes['token']);  
-        if not FToken.Trim.IsEmpty then
-        begin
-          if LProfile.token.ToLower.Trim <> FToken.Trim.ToLower then
-            continue;           
-        end;
-     
+        LProfile.token := String(LProfilesNode.ChildNodes[I].Attributes['token']);  
         LProfile.fixed := Boolean(StrToBoolDef(GetAttribute(LProfilesNode.ChildNodes[I],'fixed'), False));
+        LProfile.name  := GetChildNodeValue(LProfilesNode.ChildNodes[I],'tt:Name');
 
-        LProfile.name  := GetChildNodeValue(LProfilesNode.ChildNodes[I],'Name');
+        if Assigned(FOnProfileTokenFound) then
+        begin
+          FOnProfileTokenFound(LProfile.name,LProfile.token,LSetForDefault);
 
+          if LSetForDefault then
+            FToken := LProfile.token;
+          LSetForDefault := False;
+        end;
+        
         // Continue parsing TVideoSourceConfiguration
         LChildNodeRoot := RecursiveFindNode(LProfilesNode.ChildNodes[I],'VideoSourceConfiguration');
         if Assigned(LChildNodeRoot) then
@@ -1091,7 +1376,7 @@ end;
 
 
 function TONVIFManager.PrepareGetDeviceInformationRequest: String;
-const GET_DEVICE_INFO =  '<GetDeviceInformation xmlns="http://www.onvif.org/ver10/device/wsdl" />'+
+const GET_DEVICE_INFO =  '<tds:GetDeviceInformation/>'+
                          '</soap:Body>'+
                          '</soap:Envelope>';
 begin
@@ -1116,7 +1401,7 @@ begin
   Result := false;
   ResetDevice;
   if not UrlIsValid then Exit;  
-  Result := ExecuteRequest(GetUrlByType(atDevice), PrepareGetDeviceInformationRequest, LResultStr);
+  Result := ExecuteRequest(GetUrlByType(atDeviceService), PrepareGetDeviceInformationRequest, LResultStr);
 
   if Result then
   begin
@@ -1148,20 +1433,19 @@ begin
     {$ENDREGION}
 end;
 
-function TONVIFManager.ExecuteRequest(const Addr, Request: String; Var Answer: String): Boolean;
+function TONVIFManager.ExecuteRequest(const aAddr, aRequest: String; Var aAnswer: String): Boolean;
 Var LInStream : TStringStream; 
     LOutStream: TStringStream;
 begin
-  LInStream  := TStringStream.Create(Request);
+  LInStream  := TStringStream.Create(aRequest);
   Try
     LOutStream := TStringStream.Create;
     try
-      Result        := ExecuteRequest(Addr, LInStream, LOutStream);
-      Answer        := LOutStream.DataString;  
-      FLastResponse := Answer; 
+      Result        := ExecuteRequest(aAddr, LInStream, LOutStream);
+      aAnswer       := LOutStream.DataString;  
+      FLastResponse := aAnswer; 
       if FSaveResponseOnDisk then
-      {TODO Filename on property}
-        TFile.AppendAllText('DumpResponse.log',Answer);
+        TFile.AppendAllText(FPathFileResponseOnDisk,aAnswer+sLineBreak,TEncoding.UTF8);
     finally
       FreeAndNil(LOutStream);
     end;
@@ -1170,31 +1454,48 @@ begin
   End;
 end;
 
-function TONVIFManager.ExecuteRequest(const Addr: String; const InStream, OutStream: TStringStream): Boolean;
-Var LIdhtp1: TIdHTTP;
-    LUri: TIdURI;
-begin
-  LIdhtp1 := TIdHTTP.Create;
-  LUri    := TIdURI.Create(Addr);
-  try
-    With LIdhtp1 do
+function TONVIFManager.ExecuteRequest(const aAddr: String; const aInStream, aOutStream: TStringStream): Boolean;
+Var LHTTPClient: THttpClient;
+    LResponse  : IHTTPResponse;
+    LUri       : TIdURI;
+begin  
+  Result      := False;
+  LHTTPClient := THttpClient.Create;
+  Try
+    With LHTTPClient do
     begin
-      AllowCookies        := True;
-      HandleRedirects     := True;
-      Request.Accept      := 'gzip, deflate';
-      Request.Host        := LUri.Host;
-      Request.CharSet     := 'utf-8';
-      Request.ContentType := 'application/soap+xml; charset=utf-8;';
-      Request.CustomHeaders.Clear;
-      ProtocolVersion     := pv1_1;
-      HTTPOptions         := [hoNoProtocolErrorException, hoWantProtocolErrorContent,hoNoParseXmlCharset];
-      Post(Addr, InStream, OutStream);
-      FLastStatusCode     := ResponseCode;
-      Result      := (FLastStatusCode div 100) = 2
+      Try
+        CustHeaders.Clear;
+        AllowCookies          := True;
+        HandleRedirects       := True;
+        AutomaticDecompression:= [THTTPCompressionMethod.Deflate, THTTPCompressionMethod.GZip, THTTPCompressionMethod.Brotli, THTTPCompressionMethod.Any];
+        Accept                := 'gzip, deflate';
+      
+      //  AcceptCharSet         := 'utf-8';
+        ContentType           := 'application/soap+xml; charset=utf-8;';          
+        ResponseTimeout       := 10000;
+
+   //   ProtocolVersion       := pv1_1;
+      //HTTPOptions           := [hoNoProtocolErrorException,hoKeepOrigProtocol,hoWantProtocolErrorContent,hoNoParseXmlCharset];
+        LResponse             := Post(aAddr, aInStream,aOutStream);
+
+    
+        FLastStatusCode       := LResponse.StatusCode;
+        Result                := (FLastStatusCode div 100) = 2
+      Except on E:Exception do
+        begin
+          FLastStatusCode := ONVIF_ERROR_DELPHI_EXCEPTION;
+          FLastResponse   := E.Message;
+          {$REGION 'Log'}
+          {TSI:IGNORE ON}
+              DoWriteLog('TONVIFManager.ExecuteRequest',Format(' Addr [%s] exception [%s] ',[aAddr,e.Message]),tpLiveException);
+          {TSI:IGNORE OFF}
+          {$ENDREGION}
+        end;
+      End;        
     end;
-  finally
-    LUri.Free;
-    LIdhtp1.Free;
+  finally      
+    FreeAndNil(LHTTPClient)
   end;
 end;
 
@@ -1345,59 +1646,81 @@ begin
   Result := LResult;
 end;
 
+{ TONVIFPTZManager }
 
-function TONVIFManager.PreparePTZ_StartMoveRequest(const aCommand: String): String;
-const CALL_PTZ_COMMAND = 	'<ContinuousMove'+
-                          ' xmlns="http://www.onvif.org/ver20/ptz/wsdl"> '+
-                          '<ProfileToken>%s</ProfileToken> '+
-                          '<Velocity>'+
+constructor TONVIFPTZManager.Create(aONVIFManager: TONVIFManager);
+begin
+  FONVIFManager := aONVIFManager;
+  FPresentList  := TPTZPresetList.Create;
+end;
+
+destructor TONVIFPTZManager.Destroy;
+begin
+  FreeAndNil(FPresentList);
+  inherited;
+end;
+
+function TONVIFPTZManager.PrepareStartMoveRequest(const aCommand: String): String;
+const CALL_PTZ_COMMAND = 	'<tptz:ContinuousMove>'+
+                          '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                          '<tptz:Velocity>'+
                           '<PanTilt %s '+
                           'xmlns="http://www.onvif.org/ver10/schema"/> '+
-                          '</Velocity>'+
-                          '</ContinuousMove>'+
+                          '</tptz:Velocity>'+
+                          '</tptz:ContinuousMove>'+
                           '</soap:Body> '+
                           '</soap:Envelope>'; 
+
+	{	<tptz:ContinuousMove>
+			<tptz:ProfileToken>def_profile1</tptz:ProfileToken>
+			<tptz:Velocity xsi:type="tt:PTZSpeed">
+				<PanTilt xmlns="http://www.onvif.org/ver10/schema"
+				         y="0"
+				         x="0.5"
+				         xsi:type="tt:Vector2D"/>
+			</tptz:Velocity>
+			<tptz:Timeout>PT0H0M0.300S</tptz:Timeout>
+		</tptz:ContinuousMove>          }                
 begin
 
-  Result := GetSoapXMLConnection + Format(CALL_PTZ_COMMAND,[FToken,aCommand]);
+  Result := FONVIFManager.GetSoapXMLConnection + Format(CALL_PTZ_COMMAND,[FONVIFManager.Token,aCommand]);
 end;
 
-
-function TONVIFManager.PreparePTZ_StartZoomRequest(const aCommand: String): String;
-const CALL_PTZ_COMMAND = 	'<ContinuousMove'+
-                          ' xmlns="http://www.onvif.org/ver20/ptz/wsdl"> '+
-                          '<ProfileToken>%s</ProfileToken> '+
-                          '<Velocity>'+
-                          '<Zoom %s '+
-                          'xmlns="http://www.onvif.org/ver10/schema"/> '+
-                          '</Velocity>'+
-                          '</ContinuousMove>'+
-                          '</soap:Body> '+
-                          '</soap:Envelope>';                          
+function TONVIFPTZManager.isValidToken:Boolean;
 begin
-  Result := GetSoapXMLConnection+ Format(CALL_PTZ_COMMAND,[FToken,aCommand]);
+  Result := False;
+  if FONVIFManager.Token.Trim.IsEmpty then
+  begin
+    FONVIFManager.FLastStatusCode := ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY;
+    FONVIFManager.FLastResponse   := FONVIFManager.InternalErrorToString(ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY);
+  
+    Exit;
+  end;
+  Result := True;  
 end;
 
-function TONVIFManager.PTZ_StartMove(aMoveType:TONVIF_PTZ_MoveType;const aCommand: TONVIF_PTZ_CommandType): Boolean;
+function TONVIFPTZManager.StartMove(aMoveType:TONVIF_PTZ_MoveType;const aCommand: TONVIF_PTZ_CommandType): Boolean;
 var LCommandStr: String;  
     LResultStr : String;                                                  
 begin
   Result := False;
-  if not UrlIsValid then Exit;  
+  if not FONVIFManager.UrlIsValid then Exit; 
+  if not isValidToken then Exit;
+
   case aMoveType of
     opmvContinuousMove: 
       begin
         case aCommand of
-          opcTop          : LCommandStr := Format('x="0" y="0.%d"',[FSpeed]);
-          opcBotton       : LCommandStr := Format('x="0" y="-0.%d"',[FSpeed]);
-          opcRight        : LCommandStr := Format('x="0.%d" y="0"',[FSpeed]);  
-          opcLeft         : LCommandStr := Format('x="-0.%d" y="0"',[FSpeed]);                                 
-          opcTopRight     : LCommandStr := Format('x="0.%d" y="0.%d"',[FSpeed,FSpeed]);                                  
-          opcTopLeft      : LCommandStr := Format('x="-0.%d" y="0.%d"',[FSpeed,FSpeed]);                                  
-          opcBottonLeft   : LCommandStr := Format('x="-0.%d" y="-0.%d"',[FSpeed,FSpeed]);
-          opcBottonRight  : LCommandStr := Format('x="0.%d" y="-0.%d"',[FSpeed,FSpeed]);                                  
+          opcTop          : LCommandStr := Format('x="0" y="0.%d"',[FONVIFManager.Speed]);
+          opcBotton       : LCommandStr := Format('x="0" y="-0.%d"',[FONVIFManager.Speed]);
+          opcRight        : LCommandStr := Format('x="0.%d" y="0"',[FONVIFManager.Speed]);  
+          opcLeft         : LCommandStr := Format('x="-0.%d" y="0"',[FONVIFManager.Speed]);                                 
+          opcTopRight     : LCommandStr := Format('x="0.%d" y="0.%d"',[FONVIFManager.Speed,FONVIFManager.Speed]);                                  
+          opcTopLeft      : LCommandStr := Format('x="-0.%d" y="0.%d"',[FONVIFManager.Speed,FONVIFManager.Speed]);                                  
+          opcBottonLeft   : LCommandStr := Format('x="-0.%d" y="-0.%d"',[FONVIFManager.Speed,FONVIFManager.Speed]);
+          opcBottonRight  : LCommandStr := Format('x="0.%d" y="-0.%d"',[FONVIFManager.Speed,FONVIFManager.Speed]);                                  
         end;
-        Result := ExecuteRequest(GetUrlByType(atPtz), PreparePTZ_StartMoveRequest(LCommandStr), LResultStr);      
+        Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz), PrepareStartMoveRequest(LCommandStr), LResultStr);      
       end;
       
     opmvtRelativeMove: raise Exception.Create('opmvtRelativeMove non supported');
@@ -1406,21 +1729,37 @@ begin
 
 end;
 
-function TONVIFManager.PTZ_StartZoom(aMoveType:TONVIF_PTZ_MoveType;aInZoom: Boolean): Boolean;
+function TONVIFPTZManager.PrepareStartZoomRequest(const aCommand: String): String;
+const CALL_PTZ_COMMAND = 	'<tptz:ContinuousMove>'+
+                          '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                          '<tptz:Velocity>'+
+                          '<Zoom %s '+
+                          'xmlns="http://www.onvif.org/ver10/schema"/> '+
+                          '</tptz:Velocity>'+
+                          '</tptz:ContinuousMove>'+
+                          '</soap:Body> '+
+                          '</soap:Envelope>';                          
+begin
+  Result := FONVIFManager.GetSoapXMLConnection+ Format(CALL_PTZ_COMMAND,[FONVIFManager.Token,aCommand]);
+end;
+
+function TONVIFPTZManager.Zoom(aMoveType:TONVIF_PTZ_MoveType;aInZoom: Boolean): Boolean;
 var LCommand   : String;
     LResultStr : String; 
 begin
   Result := False;
-  if not UrlIsValid then Exit;
+  if not FONVIFManager.UrlIsValid then Exit;
+  if not isValidToken then Exit;
+    
   case aMoveType of
     opmvContinuousMove :
       begin
         if aInZoom then
-           LCommand := Format('x="-0.%d"',[FSpeed])
+           LCommand := Format('x="-0.%d"',[FONVIFManager.Speed])
         else
-           LCommand := Format('x="0.%d"',[FSpeed]);
+           LCommand := Format('x="0.%d"',[FONVIFManager.Speed]);
         
-        Result := ExecuteRequest(GetUrlByType(atPtz), PreparePTZ_StartZoomRequest(LCommand), LResultStr);      
+        Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz), PrepareStartZoomRequest(LCommand), LResultStr);      
       end;
     opmvtRelativeMove: raise Exception.Create('opmvtRelativeMove non supported');
     opmvtAbsoluteMove: raise Exception.Create('opmvtAbsoluteMove non supported');    
@@ -1428,23 +1767,159 @@ begin
 
 end;
 
-function TONVIFManager.PreparePTZ_StopMoveRequest: String;
-const STOP_PTZ_COMMAND =  '<Stop xmlns="http://www.onvif.org/ver20/ptz/wsdl">'+
-                          '<ProfileToken>%s</ProfileToken> '+
-                          '<PanTilt>true</PanTilt><Zoom>false</Zoom></Stop>'+
+function TONVIFPTZManager.PrepareStopMoveRequest: String;
+const STOP_PTZ_COMMAND =  '<tptz:Stop>'+
+                          '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                          '<tptz:PanTilt>true</tptz:PanTilt> '+
+                          '<tptz:Zoom>false</tptz:Zoom> '+
+                          '</tptz:Stop> '+
                           '</soap:Body>'+
                           '</soap:Envelope>';
 begin
-  Result := GetSoapXMLConnection+ Format(STOP_PTZ_COMMAND,[FToken]);
+  Result := FONVIFManager.GetSoapXMLConnection+ Format(STOP_PTZ_COMMAND,[FONVIFManager.Token]);
 end;
 
-function TONVIFManager.PTZ_StopMove: Boolean;
+function TONVIFPTZManager.Stop: Boolean;
 var LResultStr: String;
 begin
   Result := false;
-  if not UrlIsValid then Exit;
-  Result := ExecuteRequest(GetUrlByType(atPtz), PreparePTZ_StopMoveRequest, LResultStr);
+  if not FONVIFManager.UrlIsValid then Exit;
+  if not isValidToken then Exit;  
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz), PrepareStopMoveRequest, LResultStr);
 end;
+
+
+function TONVIFPTZManager.PrepareGetPresetList: String;
+const GET_PRESET_LIST  ='<tptz:GetPresets> '+
+                        '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                        '</tptz:GetPresets>'+
+                        '</soap:Body>'+
+                        '</soap:Envelope>';
+begin
+  Result := FONVIFManager.GetSoapXMLConnection+ Format(GET_PRESET_LIST,[FONVIFManager.Token]);
+end;
+
+function TONVIFPTZManager.LoadPresetList : Boolean;
+var LResponseStr    : String;
+    LXMLDoc         : IXMLDocument;
+    LSoapBodyNode   : IXMLNode;
+    LPresetListNode : IXMLNode;
+    LPtzPosNode     : IXMLNode;
+    LPanTiltNode    : IXMLNode;    
+    LPreset         : TPTZPreset;
+    I               : Integer;
+begin
+  FPresentList.Clear;
+
+  if not FONVIFManager.UrlIsValid then exit;
+  if not isValidToken then Exit;  
+  
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),PrepareGetPresetList,LResponseStr);
+
+  if Result then
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFPTZManager.LoadPresetList',Format(' XML response [%s]',[LResponseStr]),tpLivInfo,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    LXMLDoc := TXMLDocument.Create(nil);
+    LXMLDoc.LoadFromXML(LResponseStr);
+
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    
+    LSoapBodyNode   := FONVIFManager.GetSoapBody(LXMLDoc.DocumentElement);
+    LPresetListNode := FONVIFManager.RecursiveFindNode(LSoapBodyNode,'GetPresetsResponse');  
+
+    for I := 0 to LPresetListNode.ChildNodes.Count -1 do
+    begin
+      LPreset.Token := String(LPresetListNode.ChildNodes[I].Attributes['token']);
+      LPreset.Name  := FONVIFManager.GetChildNodeValue(LPresetListNode.ChildNodes[I],'Name');     
+      LPtzPosNode   := FONVIFManager.RecursiveFindNode(LPresetListNode.ChildNodes[I],'PTZPosition');
+      if Assigned(LPtzPosNode) then
+      begin
+         LPreset.PTZPosition.Zoom := StrToFloatDef(FONVIFManager.GetAttribute(FONVIFManager.RecursiveFindNode(LPtzPosNode,'Zoom'),'x'),0);
+         LPanTiltNode             := FONVIFManager.RecursiveFindNode(LPtzPosNode,'PanTilt');
+         if Assigned(LPanTiltNode) then
+         begin
+            LPreset.PTZPosition.PanTilt.X := StrToFloatDef(FONVIFManager.GetAttribute(LPanTiltNode,'x'),0);
+            LPreset.PTZPosition.PanTilt.y := StrToFloatDef(FONVIFManager.GetAttribute(LPanTiltNode,'y'),0);            
+         end;
+         
+      end;
+    
+      FPresentList.Add(LPreset)
+    end;
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFPTZManager.LoadPresetList',Format(' Found [%d] preset ',[FPresentList.Count]),tpLivInfo,True);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+  end;
+end;
+
+function TONVIFPTZManager.PrepareGotoPreset(const aTokenPreset: String): String;
+const GO_TO_PRESET  = '<tptz:GotoPreset> '+
+                      '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                      '<tptz:PresetToken>%s</tptz:PresetToken> '+
+                      '</tptz:GotoPreset>'+
+                      '</soap:Body>'+
+                      '</soap:Envelope>';
+begin
+
+
+  Result := FONVIFManager.GetSoapXMLConnection+ Format(GO_TO_PRESET,[FONVIFManager.Token,aTokenPreset]);
+end;
+
+function TONVIFPTZManager.GotoToPreset(const aIndexPreset: Integer) : Boolean;
+var LResponseStr : String;
+begin
+  Result := False;  
+  if not FONVIFManager.UrlIsValid then exit;
+  if not isValidToken then Exit;  
+  
+  if not inRange(aIndexPreset,0,FPresentList.Count -1) then
+  begin
+    FONVIFManager.FLastStatusCode := ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX;
+    FONVIFManager.FLastResponse   := FONVIFManager.InternalErrorToString(ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX);
+    Exit;
+  end;
+
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),PrepareGotoPreset(FPresentList[aIndexPreset].Token),LResponseStr);
+end;
+
+function TONVIFPTZManager.PrepareRemovePreset(const aTokenPreset: String): String;
+const GO_TO_PRESET  = '<tptz:RemovePreset> '+
+                      '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                      '<tptz:PresetToken>%s</tptz:PresetToken> '+
+                      '</tptz:RemovePreset>'+
+                      '</soap:Body>'+
+                      '</soap:Envelope>';
+begin  
+  Result := FONVIFManager.GetSoapXMLConnection+ Format(GO_TO_PRESET,[FONVIFManager.Token,aTokenPreset]);
+end;
+
+function TONVIFPTZManager.RemovePreset(const aIndexPreset: Integer): Boolean;
+var LResponseStr : String;
+begin
+  Result := False;  
+  if not FONVIFManager.UrlIsValid then exit;
+  if not isValidToken then Exit;  
+  
+  if not inRange(aIndexPreset,0,FPresentList.Count -1) then
+  begin
+    FONVIFManager.FLastStatusCode := ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX;
+    FONVIFManager.FLastResponse   := FONVIFManager.InternalErrorToString(ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX);
+    Exit;
+  end;
+
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),PrepareRemovePreset(FPresentList[aIndexPreset].Token),LResponseStr);
+
+  if Result then
+    FPresentList.Delete(aIndexPreset);
+end;
+
+
 
 end.
 

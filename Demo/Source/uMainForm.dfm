@@ -3,7 +3,7 @@ object Form1: TForm1
   Top = 0
   Caption = 'ONVIF demo'
   ClientHeight = 789
-  ClientWidth = 1188
+  ClientWidth = 1297
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -17,18 +17,19 @@ object Form1: TForm1
   object PageControl1: TPageControl
     Left = 0
     Top = 0
-    Width = 1188
+    Width = 1297
     Height = 656
     ActivePage = TabSheet1
     Align = alClient
     TabOrder = 0
+    ExplicitWidth = 1188
     object TabSheet1: TTabSheet
       Caption = 'Probe'
       object Label1: TLabel
         AlignWithMargins = True
         Left = 3
         Top = 376
-        Width = 1174
+        Width = 1283
         Height = 13
         Align = alBottom
         Caption = 'Logs'
@@ -44,21 +45,23 @@ object Form1: TForm1
       object tv1: TTreeView
         Left = 497
         Top = 41
-        Width = 683
+        Width = 792
         Height = 332
         Align = alClient
         Indent = 19
         TabOrder = 0
+        ExplicitWidth = 683
       end
       object Panel1: TPanel
         Left = 0
         Top = 0
-        Width = 1180
+        Width = 1289
         Height = 41
         Align = alTop
         Caption = 'Panel1'
         ShowCaption = False
         TabOrder = 1
+        ExplicitWidth = 1180
         object EUrl: TLabeledEdit
           Left = 83
           Top = 10
@@ -114,13 +117,14 @@ object Form1: TForm1
       object Memo1: TMemo
         Left = 0
         Top = 392
-        Width = 1180
+        Width = 1289
         Height = 236
         Align = alBottom
         Lines.Strings = (
           'Memo1')
         ScrollBars = ssVertical
         TabOrder = 2
+        ExplicitWidth = 1180
       end
       object Panel2: TPanel
         Left = 0
@@ -181,11 +185,12 @@ object Form1: TForm1
   object PageControl2: TPageControl
     Left = 0
     Top = 656
-    Width = 1188
+    Width = 1297
     Height = 133
     ActivePage = TabPTZ
     Align = alBottom
     TabOrder = 1
+    ExplicitWidth = 1188
     object TabPTZ: TTabSheet
       Caption = 'PTZ'
       Enabled = False

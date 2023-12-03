@@ -30,47 +30,11 @@ unit ONVIF.Structure.Profile;
 
 interface
 
+uses ONVIF.Structure.Common;
+
 Type
 
-  /// <summary>
-  ///   Represents a simple item for ONVIF configuration.
-  /// </summary>
-  /// <record name="TSimpleItem">
-  ///   <field name="Name" type="String">
-  ///     The name of the simple item.
-  ///   </field>
-  ///   <field name="Value" type="String">
-  ///     The value of the simple item.
-  ///   </field>
-  /// </record>
-  TSimpleItem = record
-    Name : String;
-    Value: String;
-  end;
-  
-  /// <summary>
-  ///   Represents a point X and Y for ONVIF configuration.
-  /// </summary>
-  /// <record name="TRealPoint">
-  ///   <field name="x" type="Real">
-  ///     The x value.
-  ///   </field>
-  ///   <field name="y" type="Real">
-  ///     The y value
-  ///   </field>
-  /// </record>
-  TRealPoint = record
-    x: Real;
-    y: Real;
-  end;
 
-  /// <summary>
-  ///   Represents a point with real coordinates for ONVIF configuration (alias for TRealPoint).
-  /// </summary>
-  /// <record name="TElementItemXY">
-  ///   Same structure as TRealPoint.
-  /// </record>  
-  TElementItemXY = TRealPoint;
   
   /// <summary>
   ///   Represents the layout configuration for an element item in ONVIF.
@@ -437,69 +401,21 @@ Type
     RuleEngineConfiguration     : TArray<TRule>;
   end;  
 
-  /// <summary>
-  ///   Represents the minimum and maximum values for a range.
-  /// </summary>
-  /// <record name="TMinMaxValue">
-  /// <field name="Min" type="Real">
-  ///   The minimum value in the range.
-  /// </field>
-  /// <field name="Max" type="Real">
-  ///   The maximum value in the range.
-  /// </field>
-  /// </record>  
-  TMinMaxValue = Record
-     Min : Real;
-     Max : Real;
-  end;
 
-  /// <summary>
-  ///   Represents a range for Pan-Tilt movement in ONVIF PTZ (Pan-Tilt-Zoom) configuration.
-  /// </summary>
-  /// <record name="TRangePTZONVIF">
-  /// <field name="URI" type="String">
-  ///   URI associated with the range.
-  /// </field>
-  /// <field name="XRange" type="TMinMaxValue">
-  ///   X-axis range for Pan movement.
-  /// </field>
-  /// <field name="YRange" type="TMinMaxValue">
-  ///   Y-axis range for Tilt movement.
-  /// </field>
-  /// </record>  
-  TRangePTZONVIF = Record
-    URI    : String;
-    XRange : TMinMaxValue;
-    YRange : TMinMaxValue; 
-  end;
   
   /// <summary>
   ///   Represents Pan-Tilt limits for ONVIF PTZ (Pan-Tilt-Zoom) configuration.
   /// </summary>
   /// <record name="TPanTiltLimits">
-  /// <field name="Range" type="TRangePTZONVIF">
+  /// <field name="Range" type="TRangeXYPTZONVIF">
   ///   Limits for Pan-Tilt movement.
   /// </field>
   ///  </record>  
   TPanTiltLimits = Record
-    Range : TRangePTZONVIF;
+    Range : TRangeXYPTZONVIF;
   End;
 
-  /// <summary>
-  ///   Represents the range of Zoom for ONVIF PTZ (Pan-Tilt-Zoom) configuration.
-  /// </summary>
-  /// <record name="TRangeZoomPTZONVIF">
-  /// <field name="URI" type="String">
-  ///   URI associated with the Zoom range.
-  /// </field>
-  /// <field name="XRange" type="TMinMaxValue">
-  ///   X-axis range for Zoom.
-  /// </field>
-  /// </record>  
-  TRangeZoomPTZONVIF = Record
-    URI    : String;
-    XRange : TMinMaxValue; 
-  End;  
+  TRangeZoomPTZONVIF = TRangeXPTZONVIF;
 
   /// <summary>
   ///   Represents Zoom limits for ONVIF PTZ (Pan-Tilt-Zoom) configuration.
@@ -675,13 +591,13 @@ Type
     VideoAnalyticsConfiguration: TVideoAnalyticsConfiguration;
     Extension                  : TExtension;
   end;   
-  
+    
   /// <summary>
   ///   Represents an array of ONVIF profiles.
   /// </summary>  
-  TProfiles = TArray<TProfile>;    
-
+  TProfiles = TArray<TProfile>;
 
 implementation
+
 
 end.

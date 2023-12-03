@@ -4,8 +4,8 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
   System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, ONVIF,
-  Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, ONVIF.Structure.Profile, TypInfo,
-  System.Rtti, ONVIF.Structure.Capabilities,System.IniFiles ;
+  Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, ONVIF.Structure.Profile, TypInfo,ONVIF.Structure.PTZ,
+  System.Rtti, ONVIF.Structure.Capabilities,System.IniFiles, ONVIF.Structure.Imaging; 
   
 type
   TForm1 = class(TForm)
@@ -66,10 +66,12 @@ type
     procedure Button8Click(Sender: TObject);
     procedure Button5Click(Sender: TObject);
   private
-    Fonvfprb1: TONVIFManager;
+    FONVIFManager: TONVIFManager;
     procedure BuildProfileTreeView(Node: TTreeNode; const Profile: TProfile);
     procedure BuildRecordTreeView(Node: TTreeNode; const FieldName: string;const RecordValue: TValue);
     procedure BuildCapabilitiesTreeView(Node: TTreeNode;const aCapabilities: TCapabilitiesONVIF);
+    procedure BuildPTZNodeTreeView(Node: TTreeNode;const aPTZNode: TPTZNode);    
+    procedure BuildImagingSettingsTreeView(Node: TTreeNode;const aImaginingSettings:TImagingSettings );    
     procedure DoONProfileTokenFound(const aName,aToken: String;
       var aSetForDefault: Boolean);
     procedure DoOnWriteLog(const aMethodName, aDescription: String;
@@ -86,43 +88,43 @@ procedure TForm1.btnPTZPanLeftMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
 
-  Fonvfprb1.PTZ.StartMove(opmvContinuousMove,opcLeft);
+  FONVIFManager.PTZ.StartMoveContinuous(opcLeft);
 end;
 
 procedure TForm1.btnPTZPanRightMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  Fonvfprb1.PTZ.StartMove(opmvContinuousMove,opcRight);
+  FONVIFManager.PTZ.StartMoveContinuous(opcRight);
 end;
 
 procedure TForm1.btnPTZPanRightMouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  Fonvfprb1.PTZ.Stop;
+  FONVIFManager.PTZ.Stop;
 end;
 
 procedure TForm1.btnPTZTiltDownMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  Fonvfprb1.PTZ.StartMove(opmvContinuousMove,opcBotton);
+  FONVIFManager.PTZ.StartMoveContinuous(opcBotton);
 end;
 
 procedure TForm1.btnPTZTiltUpMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-    Fonvfprb1.PTZ.StartMove(opmvContinuousMove,opcTop);
+    FONVIFManager.PTZ.StartMoveContinuous(opcTop);
 end;
 
 procedure TForm1.btnPTZZoomInMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  Fonvfprb1.PTZ.Zoom(opmvContinuousMove,True);
+  FONVIFManager.PTZ.Zoom(True);
 end;
 
 procedure TForm1.btnPTZZoomOutMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  Fonvfprb1.PTZ.Zoom(opmvContinuousMove,False);
+  FONVIFManager.PTZ.Zoom(False);
 end;
 
 procedure TForm1.DoONProfileTokenFound(const aName, aToken : String;var aSetForDefault:Boolean);
@@ -140,7 +142,11 @@ begin
     tpLivInfo        : Memo1.Lines.Add( Format('%s [INFO     ] %s --> %s',[DateTimeToStr(Now),aMethodName,aDescription]));
     tpLivError       : Memo1.Lines.Add( Format('%s [ERROR    ] %s --> %s',[DateTimeToStr(Now),aMethodName,aDescription]));
     tpLivWarning     : Memo1.Lines.Add( Format('%s [WARNING  ] %s --> %s',[DateTimeToStr(Now),aMethodName,aDescription]));
-    tpLiveException  : Memo1.Lines.Add( Format('%s [EXCEPTION] %s --> %s',[DateTimeToStr(Now),aMethodName,aDescription]));
+    tpLivException   : Memo1.Lines.Add( Format('%s [EXCEPTION] %s --> %s',[DateTimeToStr(Now),aMethodName,aDescription]));
+    tpLivXMLResp     : begin
+    
+                       end;
+    
   end;                 
 end;
 
@@ -170,48 +176,53 @@ Var LRootNode  : TTreeNode;
     I          : INteger;
 begin
   Memo1.Lines.Clear;
-  if Assigned(Fonvfprb1) then
-    FreeAndNil(Fonvfprb1);
-  Fonvfprb1                    := TONVIFManager.Create(EUrl.Text,EUser.Text,Epwd.Text); 
-  Fonvfprb1.SaveResponseOnDisk := True;
-  Fonvfprb1.OnWriteLog         := DoOnWriteLog;
-  Fonvfprb1.OnProfileTokenFound:= DoONProfileTokenFound;
+  if Assigned(FONVIFManager) then
+    FreeAndNil(FONVIFManager);
+  FONVIFManager                    := TONVIFManager.Create(EUrl.Text,EUser.Text,Epwd.Text); 
+  FONVIFManager.SaveResponseOnDisk := True;
+  FONVIFManager.OnWriteLog         := DoOnWriteLog;
+  FONVIFManager.OnProfileTokenFound:= DoONProfileTokenFound;
   
   ListView1.Items.BeginUpdate;
   Try
-    Fonvfprb1.ReadInfo;
+    ListView1.Clear;
+    FONVIFManager.ReadInfo;
   Finally
     ListView1.Items.EndUpdate;
   End;
   
-  ECurrentToken.Text := Fonvfprb1.Token;
+  ECurrentToken.Text := FONVIFManager.PTZ.Token;
   Tv1.Items.BeginUpdate;
   tv1.Items.Clear;
   try
-    LRootNode := tv1.Items.Add(nil,Fonvfprb1.Device.Manufacturer);
+    LRootNode := tv1.Items.Add(nil,FONVIFManager.Device.Manufacturer);
     LChildNode := tv1.Items.AddChild(LRootNode,'DeviceInfo');
-    tv1.Items.AddChild(LChildNode,Format('Model: %s',[Fonvfprb1.Device.Model]));
-    tv1.Items.AddChild(LChildNode,Format('FirmwareVersion: %s',[Fonvfprb1.Device.FirmwareVersion]));
-    tv1.Items.AddChild(LChildNode,Format('SerialNumber: %s',[Fonvfprb1.Device.SerialNumber]));
-    tv1.Items.AddChild(LChildNode,Format('HardwareId: %s',[Fonvfprb1.Device.HardwareId])) ;   
-    BuildCapabilitiesTreeView(LRootNode,Fonvfprb1.Capabilities);
+    tv1.Items.AddChild(LChildNode,Format('Model: %s',[FONVIFManager.Device.Model]));
+    tv1.Items.AddChild(LChildNode,Format('FirmwareVersion: %s',[FONVIFManager.Device.FirmwareVersion]));
+    tv1.Items.AddChild(LChildNode,Format('SerialNumber: %s',[FONVIFManager.Device.SerialNumber]));
+    tv1.Items.AddChild(LChildNode,Format('HardwareId: %s',[FONVIFManager.Device.HardwareId])) ;   
+    BuildCapabilitiesTreeView(LRootNode,FONVIFManager.Capabilities);
 
     LRootNode := tv1.Items.Add(nil,'Profiles');
 
-    for I := Low(Fonvfprb1.Profiles) to High(Fonvfprb1.Profiles) do      
-      BuildProfileTreeView(LRootNode,Fonvfprb1.Profiles[I]);
+    for I := Low(FONVIFManager.Profiles) to High(FONVIFManager.Profiles) do      
+      BuildProfileTreeView(LRootNode,FONVIFManager.Profiles[I]);
+    BuildPTZNodeTreeView(LRootNode,FONVIFManager.PTZ.PTZNode);
+    BuildImagingSettingsTreeView(LRootNode,FONVIFManager.Imaging.ImagingSettings);      
   Finally
     Tv1.Items.EndUpdate
   End;
   TabPTZ.Enabled := ListView1.Items.Count > 0;
 end;
 
+    
+
 procedure TForm1.Button2Click(Sender: TObject);
 begin
-  if not Assigned(Fonvfprb1) then Exit;
-   Fonvfprb1.PTZ.LoadPresetList;
-   PnlPreset.Enabled := Fonvfprb1.PTZ.PresetList.Count > 0;
-   ShowMessage(Format('Preset found [%d]',[Fonvfprb1.PTZ.PresetList.Count]));
+  if not Assigned(FONVIFManager) then Exit;
+   FONVIFManager.PTZ.LoadPresetList;
+   PnlPreset.Enabled := FONVIFManager.PTZ.PresetList.Count > 0;
+   ShowMessage(Format('Preset found [%d]',[FONVIFManager.PTZ.PresetList.Count]));
 end;
 
 procedure TForm1.Button3Click(Sender: TObject);
@@ -225,41 +236,67 @@ end;
 procedure TForm1.Button4Click(Sender: TObject);
 var Lindex : String;
 begin
-  if not Assigned(Fonvfprb1) then Exit;
+  if not Assigned(FONVIFManager) then Exit;
   
   if InputQuery('Index preset','',Lindex) then  
-    Fonvfprb1.PTZ.GoToPreset(Lindex.ToInteger)
+    FONVIFManager.PTZ.GoToPreset(Lindex.ToInteger)
 end;
 
 procedure TForm1.Button5Click(Sender: TObject);
 var LPresetName : String;
     LnewIndex   : Integer;
 begin
-  if not Assigned(Fonvfprb1) then Exit;
+  if not Assigned(FONVIFManager) then Exit;
   
   if InputQuery('New preset','',LPresetName) then  
-    Fonvfprb1.PTZ.SetPreset(LPresetName,LnewIndex,-1);  
+    FONVIFManager.PTZ.SetPreset(LPresetName,LnewIndex,-1);  
 end;
 
 procedure TForm1.Button6Click(Sender: TObject);
 var Lindex : String;
 begin
-  if not Assigned(Fonvfprb1) then Exit;
+  if not Assigned(FONVIFManager) then Exit;
   
   if InputQuery('Index preset','',Lindex) then  
-    Fonvfprb1.PTZ.RemovePreset(Lindex.ToInteger)
+    FONVIFManager.PTZ.RemovePreset(Lindex.ToInteger)
 end;
 
 procedure TForm1.Button7Click(Sender: TObject);
 begin 
-  if not Assigned(Fonvfprb1) then Exit;
-  Fonvfprb1.PTZ.GotoHomePosition;
+  if not Assigned(FONVIFManager) then Exit;
+  FONVIFManager.PTZ.GotoHomePosition;
 end;
 
 procedure TForm1.Button8Click(Sender: TObject);
 begin
-  if not Assigned(Fonvfprb1) then Exit;
-  Fonvfprb1.PTZ.SetHomePosition;
+  if not Assigned(FONVIFManager) then Exit;
+  FONVIFManager.PTZ.SetHomePosition;
+end;
+
+procedure TForm1.BuildImagingSettingsTreeView(Node: TTreeNode;const aImaginingSettings:TImagingSettings );    
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+begin
+  Node := tv1.Items.AddChild(nil, 'ImaginingSettings');
+
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TImagingSettings));
+
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aImaginingSettings);
+
+      if LField.FieldType.TypeKind = tkRecord then
+         BuildRecordTreeView(Node, LField.Name, LValue)
+      else
+        tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+    end;
+  finally
+    LContext.Free;
+  end;
 end;
 
 procedure TForm1.BuildCapabilitiesTreeView(Node: TTreeNode; const aCapabilities: TCapabilitiesONVIF);
@@ -301,6 +338,31 @@ begin
     for LField in LTypeObj.GetFields do
     begin
       LValue := LField.GetValue(@Profile);
+
+      if LField.FieldType.TypeKind = tkRecord then
+         BuildRecordTreeView(Node, LField.Name, LValue)
+      else
+        tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
+
+procedure TForm1.BuildPTZNodeTreeView(Node: TTreeNode;
+  const aPTZNode: TPTZNode);
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+begin
+  Node    := tv1.Items.AddChild(nil, 'PTZNode');
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TPTZNode));
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aPTZNode);
 
       if LField.FieldType.TypeKind = tkRecord then
          BuildRecordTreeView(Node, LField.Name, LValue)

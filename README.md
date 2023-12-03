@@ -16,6 +16,17 @@ The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for cont
 
 - **Zoom Control:** Basic zoom control is available. For example, you can zoom in or out.
 
+- **Preset Management:** Supports preset management, allowing users to save and recall specific camera configurations.
+  
+- **PTZ Command supported (PTZ.SupportedInfo):** This feature allows users to retrieve information about the supported PTZ commands of the camera . It provides details on available commands, helping users understand the camera's capabilities.
+  
+- **Imaging Settings:** The feature provides users with the ability to retrieve information about the configuration of the imaging feature.
+
+- **GoHome Position:** The library includes a GoHome position feature, allowing the camera to return to a predefined home position.
+
+- **SetHomePosition:** Users can set a custom home position for the camera, providing flexibility in defining a default reference point.
+
+
 **Note:** As of now, only continuous movement (ContinuousMove) is supported.
 
 # How to Use
@@ -25,6 +36,7 @@ Example Delphi code for using the ONVIF_WSDL project:
 LONVIFManager := TONVIFManager.Create(String.Empty, <Login>, <Password>);
 LONVIFManager.SaveResponseOnDisk := True;
 LONVIFManager.Url := <URL onvif example http://xxx.xxx.xxx.xxx:580/>;
+LONVIFManager.ReadInfo or ReadInfoAsync
 ```
 Now you can interact with ONVIF features using LONVIFManager
 For instance, you can retrieve device information, handle profiles, and more.

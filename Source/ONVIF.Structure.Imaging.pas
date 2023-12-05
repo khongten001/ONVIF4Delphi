@@ -45,7 +45,17 @@ Type
   /// </summary>  
   TImagingFocusMode = ( ifmUnknown,ifmAutoMode,ifmDefaultSpeed,ifmNearLimit,ifmFarLimit,ifmManual);
 
+  /// <summary>
+  ///  Enumeration representing the mode of the IR cut filter.
+  ///  The IR cut filter is a device used in imaging systems to block infrared light during the day for better color reproduction
+  ///  and allow infrared light at night for improved low-light visibility.
+  ///    • icfmUnknown: epresents an unknown or undefined state of the IR cut filter.
+  ///    • icfmOFF: Enable IR cut fiter. Typically day mode.
+  ///    • icfmON: Disable IR cut filter. Typically night mode.
+  ///    • icfmAuto: Ir cut filter is automatically activated by the device.
+  /// </summary>    
   TIrCutFilterMode  = ( icfmUnknown,icfmAuto,icfmON,icfmOFF);
+  
   /// <summary>
   /// xs:complexType name="Exposure"/> 
   /// xs:element name="Mode" type="tt:ExposureMode"/> 
@@ -100,67 +110,141 @@ Type
      Gain            : Double;
      Iris            : Double
   end;
-                               
-  
+
+  /// <summary>
+  ///   Record representing options for continuous focus in an imaging system.
+  ///   •  Speed of continuous focus, specified as a range using TMinMaxValue.
+  ///   •  Indicates whether continuous focus is supported or not.
+  /// </summary>                                 
   TContinuousFocusOptions = Record
     Speed    : TMinMaxValue;
     Supported: Boolean;
   End;
-
+  
+  /// <summary>
+  ///   Record representing options for Absolute focus in an imaging system.
+  ///   •  Speed of continuous focus, specified as a range using TMinMaxValue.
+  ///   •  Indicates whether continuous focus is supported or not.
+  ///   •  Position ??
+  /// </summary>   
   TAbsoluteFocusOptions = Record
     Speed    : TMinMaxValue;
     Position : TMinMaxValue;    
     Supported: Boolean;
   End;
 
+  /// <summary>
+  ///   Record representing options for Relative focus in an imaging system.
+  ///   • Speed: Speed of continuous focus, specified as a range using TMinMaxValue.
+  ///   • Distance: Represents the distance of focus adjustment, specified as a range using TMinMaxValue.
+  ///   • Supported: Indicates whether continuous focus is supported or not.
+  /// </summary>  
   TRelativeFocusOptions = Record
     Speed    : TMinMaxValue;
     Distance : TMinMaxValue;
     Supported: Boolean;
   End;  
 
+  /// <summary>
+  ///   Record representing focus options in an imaging system.
+  /// </summary>  
   TFocusOptions = record
     Relative   : TRelativeFocusOptions;
     Continuous : TContinuousFocusOptions;
     Absolute   : TAbsoluteFocusOptions;
   end;
-
+  
+  /// <summary>
+  ///   Record representing the status of focus.
+  ///   • Position: Double representing the current focus position.
+  ///   • MoveStatus: String indicating the movement status of the focus.
+  ///   • Error: String providing information about any focus-related errors.
+  /// </summary>
   TFocusStatus = Record
-    AM_TODO : String;
+    Position   : Double;
+    MoveStatus : String;
+    Error      : String;
   End;
 
+  /// <summary>
+  ///   Record representing focus settings.
+  ///   • Status: Status information indicating the current focus state.
+  ///   • Options: Record representing focus options in an imaging system.
+  /// </summary>
   TImagingFocusSettings = record
     Options : TFocusOptions;
     Status  : TFocusStatus;
   end;
   
+
+  /// <summary>
+  ///   Record representing focus settings.
+  ///   • AutoFocusMode: Mode indicating the autofocus behavior.
+  ///   • DefaultSpeed: Integer value representing the default autofocus speed.
+  /// </summary>  
   TImagingFocus = record
     AutoFocusMode : TImagingFocusMode;
     DefaultSpeed  : Integer;
   end;
 
+  /// <summary>
+  ///   Record representing wide dynamic range settings.
+  ///   • Mode: String representing the mode of wide dynamic range.
+  /// </summary>  
   TWideDynamicRange = record
     Mode : String;
   end;
 
+  /// <summary>
+  ///   Record representing white balance settings.
+  ///   • Mode: String representing the mode of white balance.
+  /// </summary>  
   TWhiteBalance = record
     Mode : String;
   end;
 
+  /// <summary>
+  ///   Record representing defogging settings.
+  ///   • Mode: String representing the mode of defogging.
+  ///   • Level: Double representing the defogging level.
+  /// </summary>  
   TDefogging = record
     Mode  : String;
     Level : Double;
   end;
 
+  /// <summary>
+  ///   Record representing noise reduction settings.
+  ///   • Level: Double representing the level of noise reduction.
+  /// </summary>  
   TNoiseReduction = record
     Level : Double;
   end;
   
+  /// <summary>
+  ///   Record representing imaging extensions.
+  ///   • Defogging: Record representing defogging settings.
+  ///   • NoiseReduction: Record representing noise reduction settings.
+  /// </summary>  
   TImagingExtension = record
     Defogging      : TDefogging;
     NoiseReduction : TNoiseReduction;
   end;
 
+  /// <summary>
+  ///   Record representing imaging settings.
+  ///   • BacklightCompensation: Boolean indicating whether backlight compensation is enabled.
+  ///   • Brightness: Integer representing the brightness level.
+  ///   • ColorSaturation: Integer representing the color saturation level.
+  ///   • Contrast: Integer representing the contrast level.
+  ///   • Exposure: Record representing exposure settings.
+  ///   • Focus: Record representing focus settings.
+  ///   • IrCutFilter: Enumeration representing the mode of the IR cut filter.
+  ///   • Sharpness: Integer representing the sharpness level.
+  ///   • WideDynamicRange: Record representing wide dynamic range settings.
+  ///   • WhiteBalance: Record representing white balance settings.
+  ///   • Extension: Record representing imaging extensions.
+  /// </summary>  
   TImagingSettings = record
      BacklightCompensation : Boolean;
      Brightness            : Integer;

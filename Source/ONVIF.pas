@@ -43,18 +43,28 @@ CONST {Error Code}
       ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND           = -1003;     
       ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX           = -1004;
       ONVIF_ERROR_DELPHI_EXCEPTION                   = -1005;
-      ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY                 = -1006;
-      ONVIF_ERROR_PTZ_PRESETNAME_IS_EMPTY            = -1007;
-      ONVIF_ERROR_PTZ_HOME_COMMAND_NOT_SUPPORTED     = -1008;
-      ONVIF_ERROR_PTZ_MAX_PRESET                     = -1009; 
-      ONVIF_ERROR_PTZ_MOVE_CONTINUOUS_NOT_SUPPORTED  = -1010;  
-      ONVIF_ERROR_PTZ_IMMAGING_IS_EMPTY              = -1011;
+      
+      {PTZ}
+      ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY                 = -1206;
+      ONVIF_ERROR_PTZ_PRESETNAME_IS_EMPTY            = -1207;
+      ONVIF_ERROR_PTZ_HOME_COMMAND_NOT_SUPPORTED     = -1208;
+      ONVIF_ERROR_PTZ_MAX_PRESET                     = -1209; 
+      ONVIF_ERROR_PTZ_MOVE_CONTINUOUS_NOT_SUPPORTED  = -1210;  
+      ONVIF_ERROR_PTZ_MOVE_ABSOLUTE_NOT_SUPPORTED    = -1211; 
+      ONVIF_ERROR_PTZ_MOVE_RELATIVE_NOT_SUPPORTED    = -1212;             
+
+      {Imaging}
+      ONVIF_ERROR_IMG_IMMAGING_IS_EMPTY              = -1313;
+      ONVIF_ERROR_IMG_FOCUS_NOT_SUPPORTED            = -1314;  
+      ONVIF_ERROR_IMG_FOCUS_CONTINUOUS_NOT_SUPPORTED = -1315;        
+      ONVIF_ERROR_IMG_FOCUS_ABSOLUTE_NOT_SUPPORTED   = -1316;   
+      ONVIF_ERROR_IMG_FOCUS_RELATIVE_NOT_SUPPORTED   = -1317;     
+      ONVIF_ERROR_IMG_FOCUS_ABSOLUTE_OUT_OF_RANGE    = -1318;  
 
       {Imaging}
       DEFAULT_TOKEN_IMAGING   = 'VideoSourceToken';
-      DEFAULT_TOKEN_IMAGING_2 = 'VideoSourceConfig';
-      
-      AUTO_TOKEN_IMAGING    = 'VideoSource_%d';
+      DEFAULT_TOKEN_IMAGING_2 = 'VideoSourceConfig';      
+      AUTO_TOKEN_IMAGING      = 'VideoSource_%d';
       
 Type
 
@@ -68,7 +78,7 @@ Type
          -- IRCut 
          -- IRIS 
          -- Focus
-              -- Absolute,Relative
+              -- Relative
          others --> https://www.onvif.org/specs/srv/img/ONVIF-Imaging-Service-Spec.pdf?441d4a&441d4a
 
 
@@ -153,12 +163,28 @@ Type
   TONVIFImagingManager = class;
   TONVIFPTZManager     = class;
   
+  /// <summary>
+  ///   Class representing supported imaging information.
+///   • FocusSupported: Property indicating whether focus is supported.
+  /// </summary>
   TSupportedImagingInfo = class(TPersistent)
   private
     FOwnerImagingManager : TONVIFImagingManager;
+
+    /// <summary>
+    ///   Function to get the supported focus information.
+    /// </summary>    
     function GetFocusSupported: Boolean;
   public
-    constructor Create(aOwnerImagingManager : TONVIFImagingManager);  
+  
+    /// <summary>
+    ///   Constructor for creating an instance of TSupportedImagingInfo.
+    /// </summary>  
+    constructor Create(aOwnerImagingManager : TONVIFImagingManager); 
+
+    /// <summary>
+    ///   Property indicating whether focus is supported.
+    /// </summary>     
     property FocusSupported : Boolean read GetFocusSupported;
   end;
   
@@ -194,9 +220,22 @@ Type
     //    ImagingPresets    : Indicates whether or not Imaging Presets feature is supported  
     /// </summary>           
     function GetCapabilities: Boolean;
+    
+    /// <summary>
+    ///   Function to check the validity of a token for a given method name request.
+    /// </summary>    
     function isValidToken(const aMathodNameRequest:String): Boolean;
+    
+    /// <summary>
+    ///   Procedure to set a token value.
+    /// </summary>    
     procedure SetToken(const aValue: String);
+
+    /// <summary>
+    ///   Procedure to reset imaging settings.
+    /// </summary>    
     procedure ResetImagingSettings;
+
     /// <summary>
     ///  This operation requests the imaging setting for a video source on the device. A device 
     ///  implementing the imaging service shall support this command. 
@@ -205,6 +244,7 @@ Type
      /// the device through the GetImagingSettings command.  
     /// </summary>      
     function GetImagingSettings: Boolean;
+    
     /// <summary>
     ///  The GetMoveOptions command retrieves the focus lens move options to be used in the move 
     ///  command as defined in Section 5.1.4. A device that supports the imaging service shall 
@@ -212,6 +252,11 @@ Type
     ///  supported Move Operations. If focus move is not supported at all, the reponse shall be empty
     /// </summary>
     function GetMoveOptions: Boolean;
+    
+    /// <summary>
+    ///  Via this command the current status of the Move operation can be requested. 
+    ///  Supported for this command is available if the support for the Move operation is signalled via GetMoveOptions.    
+    /// </summary>
     function GetStatus: Boolean;
     
   public
@@ -219,34 +264,142 @@ Type
     ///   Constructor for initializing a new instance of the Imaging Manager.
     /// </summary>
     /// <param name="aONVIFManager">Reference to the parent ONVIF manager instance.</param>  
-    constructor Create(aONVIFManager : TONVIFManager); 
+    constructor Create(aONVIFManager : TONVIFManager);
+     
+    /// <summary>
+    ///   Destructor for cleaning up resources.
+    /// </summary>     
     destructor Destroy;override; 
+
+    /// <summary>
+    ///	The Move command moves the focus lens in an absolute manner from its current position. 
+    ///	The speed argument is optional for absolute control. 
+    ///	If no speed argument is used, the default speed is used. 
+    ///	Focus adjustments through this operation will turn off the autofocus. 
+    ///	A device with support for remote focus control should support absolute control through the Move operation.
+    ///	The supported MoveOpions are signalled via the GetMoveOptions command. 
+    //  At least one focus control capability is required for this operation to be functional.
+    ///	The move operation contains the following commands:
+    ///	
+    ///	Absolute – Requires position parameter and optionally takes a speed argument. 
+    ///            A unitless type is used by default for focus positioning and speed. 
+    ///            Optionally, if supported, the position may be requested in m-1 units.
+    /// </summary> 
+    function FocusMoveAbsolute(const aNewPosition:Double): Boolean;
+    
+    /// <summary>
+    ///	The Move command moves the focus lens in an continuous manner from its current position. 
+    ///	The speed argument is  required for continuous. 
+    ///	Focus adjustments through this operation will turn off the autofocus. 
+    ///	A device with support for remote focus control should support absolute control through the Move operation.
+    ///	The supported MoveOpions are signalled via the GetMoveOptions command. 
+    //  At least one focus control capability is required for this operation to be functional.  
+    /// </summary> 
+    function FocusMoveContinuous(const isNear:Boolean): Boolean;
+    
+    /// <summary>
+    /// The Stop command stops all ongoing focus movements of the lense. 
+    /// A device with support for remote focus control as signalled via the GetMoveOptions supports this command.
+    /// The operation will not affect ongoing autofocus operation
+    /// </summary> 
+    function FocusMoveStop : Boolean;
+
+    /// <summary>
+    ///   Property providing access to imaging focus settings.
+    /// </summary>    
     property FocusSettings             : TImagingFocusSettings read FFocusSettings;
+    
+    /// <summary>
+    ///   Property providing access to imaging settings.
+    /// </summary>    
     property ImagingSettings           : TImagingSettings      read FImagingSettings;
+
+    /// <summary>
+    ///   Property providing access to supported imaging information.
+    /// </summary>    
     property SupportedInfo             : TSupportedImagingInfo read FSupportedInfo; 
+
+    /// <summary>
+    ///   Property indicating whether image stabilization is supported.
+    /// </summary>    
     property SupportImageStabilization : Boolean               read FSupportImageStabilization;
+
+    /// <summary>
+    ///   Property indicating whether imaging presets are supported.
+    /// </summary>    
     property SupportImagingPresets     : Boolean               read FSupportImagingPresets;    
+    
     /// <summary>
     ///   Gets or sets the token of the VideoSource.
     /// </summary>    
-    property Token                    : String              read FToken                         write SetToken;    
+    property Token                    : String                 read FToken                         write SetToken;    
     
   End;
   
+  /// <summary>
+  ///   Class representing supported PTZ (Pan-Tilt-Zoom) information.
+  ///   • Home: Property indicating whether home preset is supported.
+  ///   • MaxPreset: Property representing the maximum preset value.
+  ///   • ContinuousMode: Property indicating whether continuous mode is supported.
+  ///   • AbsoluteMode: Property indicating whether absolute mode is supported.
+  ///   • RelativeMode: Property indicating whether relative mode is supported.
+  /// </summary>  
   TSupportedPTZInfo = class(TPersistent)
     private
     FOwnerPTZManager : TONVIFPTZManager;
+    /// <summary>
+    ///   Function to retrieve the maximum preset value.
+    /// </summary>    
     function GetMaxPreset: Integer;
+    
+    /// <summary>
+    ///   Function to check if absolute mode is supported.
+    /// </summary>    
     function GetSupportedAbsoluteMode: Boolean;
+    
+    /// <summary>
+    ///   Function to check if continuous mode is supported.
+    /// </summary>    
     function GetSupportedContinuousMode: Boolean;
+
+    /// <summary>
+    ///   Function to check if home preset is supported.
+    /// </summary>    
     function GetSupportedHome: Boolean;
+
+    /// <summary>
+    ///   Function to check if relative mode is supported.
+    /// </summary>    
     function GetSupportedRelativeModeMode: Boolean;  
   public
+    /// <summary>
+    ///   Constructor for creating an instance of TSupportedPTZInfo.
+    /// </summary>  
     constructor Create(aOwnerPTZManager : TONVIFPTZManager);
+    
+    /// <summary>
+    ///   Property indicating whether home preset is supported.
+    /// </summary>    
     property Home           : Boolean read GetSupportedHome;
+    
+    /// <summary>
+    ///   Property representing the maximum preset value.
+    /// </summary>
     property MaxPreset      : Integer read GetMaxPreset;
+    
+    /// <summary>
+    ///   Property indicating whether continuous mode is supported.
+    /// </summary>
     property ContinuousMode : Boolean read GetSupportedContinuousMode;        
+
+    /// <summary>
+    ///   Property indicating whether absolute mode is supported.
+    /// </summary>    
     property AbsoluteMode   : Boolean read GetSupportedAbsoluteMode;  
+
+    /// <summary>
+    ///   Property indicating whether relative mode is supported.
+    /// </summary>    
     property RelativeMode   : Boolean read GetSupportedRelativeModeMode; 
   end;  
     
@@ -308,9 +461,25 @@ Type
     FPTZNode       : TPTZNode; 
     FSupportedInfo : TSupportedPTZInfo;
     FPTZStatus     : TPTZStatus;
+
+    /// <summary>
+    ///   Function to check the validity of a token for a given method name request.
+    /// </summary>    
     function isValidToken(const aMathodNameRequest:String): Boolean;
+
+    /// <summary>
+    ///   Procedure to reset PTZ (Pan-Tilt-Zoom) node settings.
+    /// </summary>    
     procedure ResetPTZNode;
+
+    /// <summary>
+    ///   Procedure to set a token value.
+    /// </summary>    
     procedure SetToken(const Value: String);
+
+    /// <summary>
+    ///   Procedure to reset PTZ status.
+    /// </summary>    
     procedure ResetPTZStatus;
   public
     /// <summary>
@@ -337,6 +506,9 @@ Type
     /// </returns>
     function GetNodes: Boolean;    
 
+    /// <summary>
+    ///   Property providing access to supported PTZ (Pan-Tilt-Zoom) information.
+    /// </summary>    
     property SupportedInfo : TSupportedPTZInfo  read FSupportedInfo;
     
     {Preset}
@@ -444,6 +616,24 @@ Type
     ///   True if the PTZ start zoom operation is executed successfully; False otherwise.
     /// </returns>
     function Zoom(aInZoom: Boolean): Boolean;
+    
+    /// <summary>
+    /// Absolute movements
+    ///	If a PTZ node supports absolute Pan/Tilt or absolute Zoom movements, it shall support the
+    ///	AbsoluteMove operation. The position argument of this command specifies the absolute position 
+    ///	to which the PTZ unit moves. It splits into an optional Pan/Tilt element and an optional Zoom 
+    ///	element. If the Pan/Tilt position is omitted, the current Pan/Tilt movement shall NOT be affected 
+    ///	by this command. The same holds for the zoom position. 
+    ///	The spaces referenced within the position shall be absolute position spaces supported by the 
+    ///	PTZ node. If the space information is omitted, the corresponding default spaces of the PTZ 
+    ///	configuration, a part of the specified Media Profile, is used. A device may support absolute 
+    ///	Pan/Tilt movements, absolute Zoom movements or no absolute movements by providing only 
+    ///	absolute position spaces for the supported cases.
+    ///	An existing Speed argument overrides the DefaultSpeed of the corresponding PTZ configuration 
+    ///	during movement to the requested position. If spaces are referenced within the Speed argument, 
+    ///	they shall be Speed Spaces supported by the PTZ Node.
+    ///	The operation shall fail if the requested absolute position is not reachable
+    function StartMoveAbsolute(const aPan,aTilt,aZoom : Double ): Boolean; 
 
     /// <summary>
     /// continuous movements
@@ -481,7 +671,7 @@ Type
     /// <returns>
     ///   True if the PTZ move operation is executed successfully; False otherwise.
     /// </returns>
-    function StartMoveContinuous(const aDirection: TONVIF_PTZ_CommandType): Boolean; //TODO Timeout and rename in ConinuosMove
+    function StartMoveContinuous(const aDirection: TONVIF_PTZ_CommandType;aTimeoutSec : integer = 0 ): Boolean; 
 
     /// <summary>
     /// A PTZ-capable device shall support the stop operation. If no stop filter arguments are present, 
@@ -533,7 +723,9 @@ Type
     /// </returns>
     function SetHomePosition:Boolean;
     
-    
+    /// <summary>
+    ///   Property providing access to PTZ (Pan-Tilt-Zoom) node settings.
+    /// </summary>    
     property PTZNode                 : TPTZNode            read FPTZNode;        
     
     /// <summary>
@@ -683,7 +875,6 @@ Type
     /// <returns>True if the XML is a valid SOAP XML; otherwise, false.</returns>
     function IsValidSoapXML(const aRootNode: IXMLNode;var aErrorFound:Boolean): Boolean;
 
-
     /// <summary>
     ///   Resets the ONVIF capabilities of the device to default values.
     /// </summary>
@@ -704,6 +895,9 @@ Type
     /// </summary>    
     procedure DoOnReadInfoCompleate;
 
+    /// <summary>
+    ///   Procedure to set the imaging token based on the PTZ (Pan-Tilt-Zoom) token.
+    /// </summary>    
     procedure SetTokenImagingByPTZToken;    
   public
     /// <summary>
@@ -828,8 +1022,6 @@ Type
     /// </remarks>    
     property OnSourceiideoTokenFound   : TEventTokenFound   read FOnSourceiideoTokenFound            write FOnSourceiideoTokenFound;       
 
-     
-
     /// <summary>
     ///   Gets or sets whether to save the last HTTP response on disk.
     /// </summary>
@@ -929,7 +1121,6 @@ constructor TONVIFManager.Create(const aUrl, aLogin, aPassword:String);
 begin
   Create(aUrl, aLogin, aPassword,String.Empty);
 end;
-
 
 constructor TONVIFManager.Create(const aUrl,aLogin,aPassword,aToken:String);
 begin
@@ -1053,13 +1244,23 @@ begin
     ONVIF_ERROR_SOAP_INVALID                       : result := 'Root node is not SOAP envelope';
     ONVIF_ERROR_SOAP_NOBODY                        : result := 'Body SOAP node not found';
     ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND           : Result := 'SOAP Fault code not found';
+    {PTZ}
     ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX           : Result := 'Index of preset is out of range';
     ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY                 : Result := 'PTZ token is empty';
     ONVIF_ERROR_PTZ_PRESETNAME_IS_EMPTY            : Result := 'Preset name is empty';
-    ONVIF_ERROR_PTZ_HOME_COMMAND_NOT_SUPPORTED     : Result := 'Home command are not supported by camera';
+    ONVIF_ERROR_PTZ_HOME_COMMAND_NOT_SUPPORTED     : Result := 'Home command is not supported by camera';
     ONVIF_ERROR_PTZ_MAX_PRESET                     : Result := 'Maximum number of presets reached';
     ONVIF_ERROR_PTZ_MOVE_CONTINUOUS_NOT_SUPPORTED  : Result := 'Continuous mode not supported by camera';
-    ONVIF_ERROR_PTZ_IMMAGING_IS_EMPTY              : Result := 'VideoSource token is empty';
+    ONVIF_ERROR_PTZ_MOVE_ABSOLUTE_NOT_SUPPORTED    : Result := 'Absolute mode not supported by camera';
+    ONVIF_ERROR_PTZ_MOVE_RELATIVE_NOT_SUPPORTED    : Result := 'Relativ mode not supported by camera';
+
+    {Imaging}
+    ONVIF_ERROR_IMG_IMMAGING_IS_EMPTY              : Result := 'VideoSource token is empty';
+    ONVIF_ERROR_IMG_FOCUS_NOT_SUPPORTED            : Result := 'Focus command is not supported by camera';
+    ONVIF_ERROR_IMG_FOCUS_CONTINUOUS_NOT_SUPPORTED : Result := 'Continuous mode for focus command is not supported by camera'; 
+    ONVIF_ERROR_IMG_FOCUS_ABSOLUTE_NOT_SUPPORTED   : Result := 'Relativ mode for focus command is not supported by camera'; 
+    ONVIF_ERROR_IMG_FOCUS_RELATIVE_NOT_SUPPORTED   : Result := 'Absolute mode for focus command is not supported by camera'; 
+    ONVIF_ERROR_IMG_FOCUS_ABSOLUTE_OUT_OF_RANGE    : Result := 'Value of absolute position is out of range'; 
   else
     result := 'Unknow error' 
   end;
@@ -1632,8 +1833,7 @@ begin
               DoWriteLog('TONVIFManager.ExecuteRequest',Format('ULR [%s] [Parser XML response exception [%s], Execute request Error [%d] response [%s]',[FUrl,e.Message,FLastStatusCode,aAnswer]),tpLivError);      
           {TSI:IGNORE OFF}
           {$ENDREGION}           
-        End;
-          
+        End;          
       end;
       
       if FSaveResponseOnDisk then
@@ -1688,9 +1888,8 @@ begin
   ResetDevice;
   ResetProfiles;
   ResetCapabilities;
-  FLastStatusCode         := 0;
-  FLastResponse           := String.Empty;
-    
+  FLastStatusCode := 0;
+  FLastResponse   := String.Empty;    
 end;
 
 Procedure TONVIFManager.ResetProfiles;
@@ -1814,11 +2013,9 @@ begin
     {TSI:IGNORE ON}
         DoWriteLog('TONVIFManager.IsValidSoapXML',Format('ULR [%s] SOAP error [%d] description [%s]',[FUrl,FLastStatusCode,FLastResponse]),tpLivError);
     {TSI:IGNORE OFF}
-    {$ENDREGION}      
-          
+    {$ENDREGION}                
     exit;
   end;
-
   Result := True;
 end;
 
@@ -1852,7 +2049,29 @@ begin
   Result := True;  
 end;
 
-function TONVIFPTZManager.StartMoveContinuous(const aDirection: TONVIF_PTZ_CommandType): Boolean;
+function TONVIFPTZManager.StartMoveAbsolute(const aPan, aTilt, aZoom: Double): Boolean;
+begin
+  Result := False;
+  if not FONVIFManager.UrlIsValid('TONVIFPTZManager.StartMoveContinuous') then Exit; 
+  if not isValidToken('TONVIFPTZManager.StartMoveContinuous') then Exit;
+
+  if not SupportedInfo.GetSupportedAbsoluteMode then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.StartMoveContinuous',ONVIF_ERROR_PTZ_MOVE_ABSOLUTE_NOT_SUPPORTED);
+    Exit;
+  end;
+  raise Exception.Create('not implemented');
+  {
+  TODO Check range
+  How check ? on all Node of array ?
+  FPTZNode.SupportedPTZSpaces.AbsolutePanTiltPositionSpace
+  }
+  
+//s  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz), FONVIFManager.FSOAPBuilder.PrepareStartMoveContinuousRequest(FToken,LCommandStr), LResultStr);      
+
+end;
+
+function TONVIFPTZManager.StartMoveContinuous(const aDirection: TONVIF_PTZ_CommandType;aTimeoutSec : integer = 0): Boolean;
 var LCommandStr: String;  
     LResultStr : String;                                                  
 begin
@@ -1876,6 +2095,8 @@ begin
     opcBottonLeft   : LCommandStr := Format('x="-0.%d" y="-0.%d"',[FONVIFManager.Speed,FONVIFManager.Speed]);
     opcBottonRight  : LCommandStr := Format('x="0.%d" y="-0.%d"',[FONVIFManager.Speed,FONVIFManager.Speed]);                                  
   end;
+
+  //TODO aTimeoutSec , call GetConfigurationOptions for range within which timeouts are accepted by the PTZ node
   Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz), FONVIFManager.FSOAPBuilder.PrepareStartMoveContinuousRequest(FToken,LCommandStr), LResultStr);      
 end;
 
@@ -2270,8 +2491,7 @@ begin
     {TSI:IGNORE ON}
         FONVIFManager.DoWriteLog('TONVIFManager.GetStatus',Format('Url [%s] Error [%d] LastResponse [%s]',[FONVIFManager.FUrl,FONVIFManager.FLastStatusCode,FONVIFManager.FLastResponse]),tpLivError);      
     {TSI:IGNORE OFF}
-    {$ENDREGION}      
-  
+    {$ENDREGION}        
 end;
 
 function TONVIFPTZManager.GotoHomePosition: Boolean;
@@ -2404,6 +2624,7 @@ begin
     begin
       GetStatus;
       GetNodes; 
+//  TODO    GetConfigurationOptions;
       FONVIFManager.SetTokenImagingByPTZToken 
     end;
   end;
@@ -2470,7 +2691,6 @@ end;
 function TONVIFImagingManager.GetCapabilities: Boolean;
 var LResponseStr : String;
 begin
-
   Result := False;  
   if not FONVIFManager.UrlIsValid('TONVIFImagingManager.GetCapabilities') then Exit; 
   if not isValidToken('TONVIFImagingManager.GetCapabilities') then Exit;
@@ -2485,10 +2705,9 @@ begin
     {TSI:IGNORE OFF}
     {$ENDREGION}
     //TODO Parser
-    FSupportImageStabilization                     := False;
-    FSupportImagingPresets                         := False;    
+    FSupportImageStabilization := False;
+    FSupportImagingPresets     := False;    
   end;
-
 end;
 
 procedure TONVIFImagingManager.ResetImagingSettings;
@@ -2503,7 +2722,9 @@ begin
   FFocusSettings.Options.Absolute.Speed.Min      := -1;
   FFocusSettings.Options.Absolute.Speed.Max      := -1;
   FFocusSettings.Options.Absolute.Supported      := False; 
-
+  FFocusSettings.Status.Position                 := -1;
+  FFocusSettings.Status.MoveStatus               := String.Empty; 
+  FFocusSettings.Status.Error                    := String.Empty; 
   FSupportImageStabilization                     := False;
   FSupportImagingPresets                         := False;
   FImagingSettings.BacklightCompensation         := False;
@@ -2527,15 +2748,97 @@ begin
   FImagingSettings.WhiteBalance.Mode             := String.Empty;   
   FImagingSettings.Extension.Defogging.Mode      := String.Empty;   
   FImagingSettings.Extension.Defogging.Level     := -1;
-  FImagingSettings.Extension.NoiseReduction.Level:= -1;  
- 
+  FImagingSettings.Extension.NoiseReduction.Level:= -1;   
 end;
-
 
 destructor TONVIFImagingManager.Destroy;
 begin
   FreeAndNil(FSupportedInfo);
   inherited;
+end;
+
+function TONVIFImagingManager.FocusMoveAbsolute(const aNewPosition: Double): Boolean;
+var LCommand   : String;
+    LResultStr : String; 
+begin
+  Result := False;
+  if not FONVIFManager.UrlIsValid('TONVIFPTZManager.FocusMoveAbsolute') then Exit;
+  if not isValidToken('TONVIFPTZManager.FocusMoveAbsolute') then Exit;
+
+  if not SupportedInfo.FocusSupported then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveAbsolute',ONVIF_ERROR_IMG_FOCUS_NOT_SUPPORTED);
+    Exit;
+  end;  
+
+  if not FFocusSettings.Options.Absolute.Supported then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveAbsolute',ONVIF_ERROR_IMG_FOCUS_ABSOLUTE_NOT_SUPPORTED);
+    Exit;
+  end;    
+
+  LCommand := FloatToStr(aNewPosition).Replace(',','.');   
+
+  if not InRange(aNewPosition,FFocusSettings.Options.Absolute.Speed.Min,FFocusSettings.Options.Absolute.Speed.Max) then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveAbsolute',ONVIF_ERROR_IMG_FOCUS_ABSOLUTE_OUT_OF_RANGE);  
+    Exit;
+  end;
+           
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz),FONVIFManager.FSOAPBuilder.PrepareImagingMoveFocus(FToken,LCommand,String.Empty,String.Empty), LResultStr);      
+end;
+
+function TONVIFImagingManager.FocusMoveContinuous(const isNear:Boolean): Boolean;
+var LCommand   : String;
+    LResultStr : String; 
+begin
+  Result := False;
+  if not FONVIFManager.UrlIsValid('TONVIFPTZManager.FocusMoveContinuous') then Exit;
+  if not isValidToken('TONVIFPTZManager.FocusMoveContinuous') then Exit;
+
+  if not SupportedInfo.FocusSupported then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveContinuous',ONVIF_ERROR_IMG_FOCUS_NOT_SUPPORTED);
+    Exit;
+  end;  
+
+  if not FFocusSettings.Options.Continuous.Supported then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveContinuous',ONVIF_ERROR_IMG_FOCUS_CONTINUOUS_NOT_SUPPORTED);
+    Exit;
+  end;    
+
+  // Cosa devo passare ??
+  if isNear then
+     LCommand := FloatToStr( FONVIFManager.FSpeed * -1).Replace(',','.')    
+  else
+     LCommand := FloatToStr( FONVIFManager.FSpeed ).Replace(',','.');
+        
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz),FONVIFManager.FSOAPBuilder.PrepareImagingMoveFocus(FToken,String.Empty,String.Empty,LCommand), LResultStr);      
+end;
+
+function TONVIFImagingManager.FocusMoveStop: Boolean;
+var LResultStr : String;
+begin
+  Result := False;
+  if not FONVIFManager.UrlIsValid('TONVIFPTZManager.FocusMoveStop') then Exit;
+  if not isValidToken('TONVIFPTZManager.FocusMoveStop') then Exit;
+
+  if not SupportedInfo.FocusSupported then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveStop',ONVIF_ERROR_IMG_FOCUS_NOT_SUPPORTED);
+    Exit;
+  end;  
+
+  if not FFocusSettings.Options.Continuous.Supported then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.FocusMoveStop',ONVIF_ERROR_IMG_FOCUS_CONTINUOUS_NOT_SUPPORTED);
+    Exit;
+  end;      
+
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPtz),FONVIFManager.FSOAPBuilder.PrepareImagingStopMoveFocus(FToken), LResultStr);        
+  if Result then  
+    GetStatus;  
 end;
 
 Function TONVIFImagingManager.GetMoveOptions:Boolean;
@@ -2607,8 +2910,8 @@ var LResponseStr       : String;
     LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LGestStatus        : IXMLNode;
-    LErrorFound        : Boolean;
-    I                  : Integer;
+    LErrorFound        : Boolean;  
+    I                  : Integer;  
 begin
   Result := False;  
   
@@ -2627,27 +2930,36 @@ begin
     if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
-    Exit;
-    LGestStatus  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetStatusResponse');
-
+    LGestStatus     := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Position');
+    if Assigned(LGestStatus) then
+      LGestStatus := LGestStatus.ParentNode;
     for I := 0 to LGestStatus.ChildNodes.Count -1 do
     begin
+      if SameText(LGestStatus.ChildNodes[I].DOMNode.localName,'Position') then
+      begin
+        FFocusSettings.Status.Position := StrToFloatLocale(LGestStatus.ChildNodes[I].Text,-1) 
+
+        {TODO Add event with current position e Max e Min range of focus }
+      end
+      else if SameText(LGestStatus.ChildNodes[I].DOMNode.localName,'MoveStatus') then
+        FFocusSettings.Status.MoveStatus := LGestStatus.ChildNodes[I].Text
+      else if SameText(LGestStatus.ChildNodes[I].DOMNode.localName,'Error') then
+        FFocusSettings.Status.Error := LGestStatus.ChildNodes[I].Text 
+      else
         {$REGION 'Log'}
         {TSI:IGNORE ON}
             FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',Format('Unsupported node name [%s]',[LGestStatus.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
         {TSI:IGNORE OFF}
-        {$ENDREGION}
+        {$ENDREGION}                                                
     end;      
   end
   else
     {$REGION 'Log'}
     {TSI:IGNORE ON}
-        FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',Format('Url [%s] Error [%d] LastResponse [%s]',[FONVIFManager.FUrl,FONVIFManager.FLastStatusCode,FONVIFManager.FLastResponse]),tpLivError);      
+        FONVIFManager.DoWriteLog('TONVIFManager.GetStatus',Format('Url [%s] Error [%d] LastResponse [%s]',[FONVIFManager.FUrl,FONVIFManager.FLastStatusCode,FONVIFManager.FLastResponse]),tpLivError);      
     {TSI:IGNORE OFF}
-    {$ENDREGION}      
-  
+    {$ENDREGION}       
 end;
-
 
 function TONVIFImagingManager.GetImagingSettings: Boolean;
 var LResponseStr       : String;
@@ -2787,7 +3099,7 @@ begin
   Result := False;
   if FToken.Trim.IsEmpty then
   begin
-    FONVIFManager.SetLastStatusCode(aMathodNameRequest,ONVIF_ERROR_PTZ_IMMAGING_IS_EMPTY);    
+    FONVIFManager.SetLastStatusCode(aMathodNameRequest,ONVIF_ERROR_IMG_IMMAGING_IS_EMPTY);    
     Exit;
   end;
   Result := True;  
@@ -2841,9 +3153,7 @@ begin
   Result := Length(FOwnerPTZManager.FPTZNode.SupportedPTZSpaces.RelativePanTiltTranslationSpace) >0;
 end;
 
-
 { TSupportedImagingInfo }
-
 constructor TSupportedImagingInfo.Create(aOwnerImagingManager: TONVIFImagingManager);
 begin
   FOwnerImagingManager := aOwnerImagingManager;
@@ -2851,7 +3161,7 @@ end;
 
 function TSupportedImagingInfo.GetFocusSupported: Boolean;
 begin
- Result := FOwnerImagingManager.FFocusSettings.Options.Relative.Supported or 
+  Result := FOwnerImagingManager.FFocusSettings.Options.Relative.Supported or 
            FOwnerImagingManager.FFocusSettings.Options.Absolute.Supported or
            FOwnerImagingManager.FFocusSettings.Options.Continuous.Supported;
              

@@ -277,8 +277,7 @@ Type
   ///   <field name="H264Profile" type="String">
   ///     The H.264 profile used by the video encoder.
   ///   </field>
-  /// </record>
-           
+  /// </record>           
   TH264ONVIF = record
     GovLength  : Integer;
     H264Profile: String;
@@ -400,8 +399,6 @@ Type
     AnalyticsEngineConfiguration: TArray<TAnalyticsModule>;
     RuleEngineConfiguration     : TArray<TRule>;
   end;  
-
-
   
   /// <summary>
   ///   Represents Pan-Tilt limits for ONVIF PTZ (Pan-Tilt-Zoom) configuration.

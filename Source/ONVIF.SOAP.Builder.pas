@@ -31,6 +31,8 @@ interface
 
 uses IdHashSHA,System.SysUtils,System.NetEncoding,Soap.XSBuiltIns,IdGlobal; 
 
+CONST END_SOAP_XML =  '</soap:Body>'+
+                      '</soap:Envelope>'; 
 
 Type
 
@@ -87,8 +89,9 @@ Type
     /// </summary>
     /// <returns>
     ///   A string containing the details of the SOAP connection in XML format.
-    /// </returns>    
+    /// </returns>
     function GetSoapXMLConnection:String;
+
   public
      constructor Create(const aLogin, aPassword:String);
 
@@ -100,6 +103,24 @@ Type
     /// </returns>
     function PrepareGetCapabilitiesRequest: String;
 
+    /// <summary>
+    ///   Prepares an XML SOAP request for moving the focus in imaging with various parameters.
+    /// </summary>
+    /// <param name="aToken">Token for referencing the VideoSource in the move operation.</param>
+    /// <param name="aAbsolutePos">Position parameter for the absolute focus control.</param>
+    /// <param name="aRelativeDistance">Distance parameter for the relative focus control.</param>
+    /// <param name="aSpeed">Speed parameter for the focus control (absolute or relative).</param>
+    /// <returns>String representation of the SOAP request.</returns>
+    function PrepareImagingMoveFocus(const aToken: String; aAbsolutePos, aRelativeDistance, aSpeed: String): String;
+
+    
+    /// <summary>
+    ///   Prepares an XML SOAP request for stopping the focus movement in imaging.
+    /// </summary>
+    /// <param name="aToken">Token for referencing the VideoSource in the move operation.</param>
+    /// <returns>String representation of the SOAP request.</returns>
+    function PrepareImagingStopMoveFocus(const aToken: String): String;
+    
     /// <summary>
     ///   Prepares a GetMoveOptions request for ONVIF communication.
     /// </summary>
@@ -391,9 +412,7 @@ begin
 end;
 
 function TONVIFSOAPBuilder.PrepareGetDeviceInformationRequest: String;
-const GET_DEVICE_INFO =  '<tds:GetDeviceInformation/>'+
-                         '</soap:Body>'+
-                         '</soap:Envelope>';
+const GET_DEVICE_INFO =  '<tds:GetDeviceInformation/>' + END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ GET_DEVICE_INFO;
 end;
@@ -401,9 +420,7 @@ end;
 function TONVIFSOAPBuilder.PrepareGetCapabilitiesRequest: String;
 const GET_CAPABILITIES = '<tds:GetCapabilities>'+
                          '<tds:Category>All</tds:Category>'+
-                         '</tds:GetCapabilities>'+
-                         '</soap:Body>'+
-                         '</soap:Envelope>';
+                         '</tds:GetCapabilities>' + END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ GET_CAPABILITIES;
 end;
@@ -411,31 +428,22 @@ end;
 {Immaginig}
 
 function TONVIFSOAPBuilder.PrepareGetProfilesRequest: String;
-const GET_PROFILES = '<trt:GetProfiles/> ' + 
-                      '</soap:Body> ' +
-                      '</soap:Envelope>';
+const GET_PROFILES = '<trt:GetProfiles/> ' + END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection + GET_PROFILES
 end;
 
-
-
-
 function TONVIFSOAPBuilder.PrepareImagingMoveOptions(const aToken:String): String;
 const GET_MOVE_OPTIONS  = '<timg:GetMoveOptions> '+
                           '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
-                          '</timg:GetMoveOptions>'+
-                          '</soap:Body>'+
-                          '</soap:Envelope>';
+                          '</timg:GetMoveOptions>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ Format(GET_MOVE_OPTIONS,[aToken]);;
 end;
 
 function TONVIFSOAPBuilder.PrepareImagingCapabilities: String;
 const GET_CAPABILITIES  = '<timg:GetServiceCapabilities> '+
-                          '</timg:GetServiceCapabilities>'+
-                          '</soap:Body>'+
-                          '</soap:Envelope>';
+                          '</timg:GetServiceCapabilities>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ GET_CAPABILITIES;
 end;
@@ -445,19 +453,59 @@ end;
 function TONVIFSOAPBuilder.PrepareImagingGetStatus(const aToken: String): String;
 const GET_SETTINGS  = '<timg:GetStatus> '+
                       '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
-                      '</timg:GetStatus>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</timg:GetStatus>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ Format(GET_SETTINGS,[aToken]);
+end;
+
+function TONVIFSOAPBuilder.PrepareImagingStopMoveFocus(const aToken:String): String;
+const STOP_FOCUS_COMMAND =  '<timg:Stop>'+
+                            '<timg:VideoSourceToken >%s</timg:VideoSourceToken > '+
+                            '</timg:Stop> '+ END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection+ Format(STOP_FOCUS_COMMAND,[aToken]);
+end;
+
+
+function TONVIFSOAPBuilder.PrepareImagingMoveFocus(const aToken: String;aAbsolutePos,aRelativeDistance,aSpeed:String): String;
+const SET_MOVE_START    =   '<timg:Move>' +
+                            '<timg:VideoSourceToken>%s</timg:VideoSourceToken>' +
+                            '<timg:Focus> ';
+                        
+      SET_MOVE_ABSOLUTE =   '<Absolute>' +
+                            '<Position>%s</Position>' +
+                            '</Absolute> ';
+                            
+      SET_MOVE_RELATIVE  =  '<Relative>' +      
+                            '<Distance>%s</Distance>' +
+                            '</Relative> ' ;
+
+      SET_MOVE_CONTINUOUS = '<timg:Continuous>' +
+                            '<timg:Speed>%s</timg:Speed>' +
+                            '</timg:Continuous> ';
+                            
+      SET_MOVE_END =        '</timg:Focus>' +
+                            '</timg:Move> ';
+var LXML :String;                  
+begin  
+  LXML := Format(SET_MOVE_START,[aToken]);
+  if not aAbsolutePos.Trim.IsEmpty then
+    LXML := LXML + Format(SET_MOVE_ABSOLUTE,[aAbsolutePos]);
+
+  if not aRelativeDistance.Trim.IsEmpty then
+    LXML := LXML + Format(SET_MOVE_RELATIVE,[aRelativeDistance]);
+    
+  if not aSpeed.Trim.IsEmpty then
+    LXML := LXML + Format(SET_MOVE_CONTINUOUS,[aSpeed]);
+    
+  LXML := LXML  + SET_MOVE_END  + END_SOAP_XML;
+  Result := GetSoapXMLConnection+ LXML;
 end;
 
 function TONVIFSOAPBuilder.PrepareGetImagingSettings(const aToken:String): String;
 const GET_SETTINGS  = '<timg:GetImagingSettings> '+
                       '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
-                      '</timg:GetImagingSettings>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</timg:GetImagingSettings>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ Format(GET_SETTINGS,[aToken]);
 end;
@@ -485,9 +533,7 @@ const CALL_PTZ_COMMAND ='<tptz:RelativeMove> '+
                         'x="0.560000002" '+
                         'xsi:type="tt:Vector1D"/> '+
                         '</tptz:Speed> '+
-                        '</tptz:RelativeMove> '+
-                        '</soap:Body> '+
-                        '</soap:Envelope>';                         
+                        '</tptz:RelativeMove> '+ END_SOAP_XML;                       
 begin                                         
     Result := GetSoapXMLConnection + Format(CALL_PTZ_COMMAND,[aToken,aDirection]);  
 end;
@@ -499,9 +545,7 @@ const CALL_PTZ_COMMAND = 	'<tptz:ContinuousMove>'+
                           '<PanTilt %s '+
                           'xmlns="http://www.onvif.org/ver10/schema"/> '+
                           '</tptz:Velocity>'+
-                          '</tptz:ContinuousMove>'+
-                          '</soap:Body> '+
-                          '</soap:Envelope>'; 
+                          '</tptz:ContinuousMove>'+ END_SOAP_XML;
 
 	{	<tptz:ContinuousMove>
 			<tptz:ProfileToken>def_profile1</tptz:ProfileToken>
@@ -525,9 +569,7 @@ const CALL_PTZ_COMMAND = 	'<tptz:ContinuousMove>'+
                           '<Zoom %s '+
                           'xmlns="http://www.onvif.org/ver10/schema"/> '+
                           '</tptz:Velocity>'+
-                          '</tptz:ContinuousMove>'+
-                          '</soap:Body> '+
-                          '</soap:Envelope>';                          
+                          '</tptz:ContinuousMove>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(CALL_PTZ_COMMAND,[aToken,aZoomIN]);
 end;
@@ -535,9 +577,7 @@ end;
 function TONVIFSOAPBuilder.PrepareGetPresetList(const aToken:String): String;
 const GET_PRESET_LIST  ='<tptz:GetPresets> '+
                         '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
-                        '</tptz:GetPresets>'+
-                        '</soap:Body>'+
-                        '</soap:Envelope>';
+                        '</tptz:GetPresets>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(GET_PRESET_LIST,[aToken]);
 end;
@@ -545,29 +585,22 @@ end;
 function TONVIFSOAPBuilder.PrepareGotoHome(const aToken:String): String;
 const GO_TO_HOME  = '<tptz:GotoHomePosition> '+        
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
-                      '</tptz:GotoHomePosition>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</tptz:GotoHomePosition>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(GO_TO_HOME,[aToken]);
 end;
 
 function TONVIFSOAPBuilder.PrepareGetNodes: String;
 const GET_NODES  = '<tptz:GetNodes> '+        
-                    '</tptz:GetNodes>'+
-                    '</soap:Body>'+
-                    '</soap:Envelope>';
+                    '</tptz:GetNodes>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ GET_NODES;
 end;
 
-
 function TONVIFSOAPBuilder.PrepareSetHomePosition(const aToken:String): String;
 const SET_TO_HOME  = '<tptz:SetHomePosition> '+        
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
-                      '</tptz:SetHomePosition>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</tptz:SetHomePosition>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(SET_TO_HOME,[aToken]);
 end;
@@ -575,21 +608,16 @@ end;
 function TONVIFSOAPBuilder.PrepareGetStatus(const aToken: String): String;
 const GET_STATUS  = '<tptz:GetStatus> '+        
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
-                      '</tptz:GetStatus>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</tptz:GetStatus>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ Format(GET_STATUS,[aToken]);
 end;
-
 
 function TONVIFSOAPBuilder.PrepareGotoPreset(const aToken,aTokenPreset: String): String;
 const GO_TO_PRESET  = '<tptz:GotoPreset> '+
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
                       '<tptz:PresetToken>%s</tptz:PresetToken> '+
-                      '</tptz:GotoPreset>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</tptz:GotoPreset>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(GO_TO_PRESET,[aToken,aTokenPreset]);
 end;
@@ -599,9 +627,7 @@ const SET_PRESET  = ' <tptz:SetPreset> '+
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
                       '<tptz:PresetName>%s</tptz:PresetName> '+                      
                       '<tptz:PresetToken>%s</tptz:PresetToken> '+
-                      '</tptz:SetPreset>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</tptz:SetPreset>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ Format(SET_PRESET,[aToken,aPresetName,aTokenPreset]);
 end;
@@ -610,9 +636,7 @@ function TONVIFSOAPBuilder.PrepareRemovePreset(const aToken,aTokenPreset: String
 const REMOVE_PRESET  = '<tptz:RemovePreset> '+
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
                       '<tptz:PresetToken>%s</tptz:PresetToken> '+
-                      '</tptz:RemovePreset>'+
-                      '</soap:Body>'+
-                      '</soap:Envelope>';
+                      '</tptz:RemovePreset>'+ END_SOAP_XML;
 begin  
   Result := GetSoapXMLConnection+ Format(REMOVE_PRESET,[aToken,aTokenPreset]);
 end;
@@ -622,9 +646,7 @@ const STOP_PTZ_COMMAND =  '<tptz:Stop>'+
                           '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
                           '<tptz:PanTilt>true</tptz:PanTilt> '+
                           '<tptz:Zoom>false</tptz:Zoom> '+
-                          '</tptz:Stop> '+
-                          '</soap:Body>'+
-                          '</soap:Envelope>';
+                          '</tptz:Stop> '+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(STOP_PTZ_COMMAND,[aToken]);
 end;

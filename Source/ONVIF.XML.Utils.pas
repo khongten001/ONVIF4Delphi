@@ -63,7 +63,6 @@ Type
     /// </remarks>    
     class function GetChildNodeValue(const ParentNode: IXMLNode;const ChildNodeName: string): string;static;
 
-
     /// <summary>
     ///   Retrieves the value of a specified attribute from an XML node.
     /// </summary>

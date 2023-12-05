@@ -26,8 +26,11 @@ The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for cont
 
 - **SetHomePosition:** Users can set a custom home position for the camera, providing flexibility in defining a default reference point.
 
-
 **Note:** As of now, only continuous movement (ContinuousMove) is supported.
+
+The Imaging: functionality in this project is focused on video adjustments 
+
+- **Focus:** supported in continuous and absolute mode.
 
 # How to Use
 Example Delphi code for using the ONVIF_WSDL project:

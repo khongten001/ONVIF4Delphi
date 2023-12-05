@@ -310,8 +310,9 @@ Type
     function PrepareImagingCapabilities: String;    
   end;
 
-implementation
 
+  
+implementation
 
 
 constructor TONVIFSOAPBuilder.Create(const aLogin,aPassword:String);

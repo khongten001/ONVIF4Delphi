@@ -98,8 +98,19 @@ Type
     class function RecursiveFindNode(ANode: IXMLNode; const aSearchNodeName: string;const aScanAllNode: Boolean=False): IXMLNode;static;    
 
   end;
+  
+Function StrToFloatLocale(const S: string; const Default: Extended):Extended;
 
 implementation
+
+Function StrToFloatLocale(const S: string; const Default: Extended):Extended;
+begin
+  if FormatSettings.DecimalSeparator = '.' then
+    Result := StrToFloatDef(s.Replace(',','.'),Default)
+  else    
+    Result := StrToFloatDef(s.Replace('.',','),Default)      
+end;
+
 
 { TONVIFXMLUtils }
 class function TONVIFXMLUtils.GetChildNodeValue(const ParentNode: IXMLNode; const ChildNodeName: string): string;

@@ -19,8 +19,6 @@ The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for cont
 - **Preset Management:** Supports preset management, allowing users to save and recall specific camera configurations.
   
 - **PTZ Command supported (PTZ.SupportedInfo):** This feature allows users to retrieve information about the supported PTZ commands of the camera . It provides details on available commands, helping users understand the camera's capabilities.
-  
-- **Imaging Settings:** The feature provides users with the ability to retrieve information about the configuration of the imaging feature.
 
 - **GoHome Position:** The library includes a GoHome position feature, allowing the camera to return to a predefined home position.
 
@@ -30,6 +28,7 @@ The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for cont
 
 The Imaging: functionality in this project is focused on video adjustments 
 
+- **Imaging Settings:** The feature provides users with the ability to retrieve information about the configuration of the imaging feature.
 - **Focus:** supported in continuous and absolute mode.
 
 # How to Use

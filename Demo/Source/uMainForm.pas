@@ -76,6 +76,10 @@ type
       var aSetForDefault: Boolean);
     procedure DoOnWriteLog(const aMethodName, aDescription: String;
       aLevel: TPONVIFLivLog; IsVerboseLog: boolean=False);
+    procedure processTValue(aNode: TTreeNode; aField: TRttiField;
+      aValue: TValue);
+    procedure BuildImagingFocusOptionsTreeView(Node: TTreeNode;
+      const aFocusOptions: TImagingFocusSettings);
   public
     { Public declarations }
   end;
@@ -181,7 +185,7 @@ begin
   FONVIFManager                    := TONVIFManager.Create(EUrl.Text,EUser.Text,Epwd.Text); 
   FONVIFManager.SaveResponseOnDisk := True;
   FONVIFManager.OnWriteLog         := DoOnWriteLog;
-  FONVIFManager.OnProfileTokenFound:= DoONProfileTokenFound;
+  FONVIFManager.OnPTZTokenFound    := DoONProfileTokenFound;
   
   ListView1.Items.BeginUpdate;
   Try
@@ -209,6 +213,8 @@ begin
       BuildProfileTreeView(LRootNode,FONVIFManager.Profiles[I]);
     BuildPTZNodeTreeView(LRootNode,FONVIFManager.PTZ.PTZNode);
     BuildImagingSettingsTreeView(LRootNode,FONVIFManager.Imaging.ImagingSettings);      
+    BuildImagingFocusOptionsTreeView(LRootNode,FONVIFManager.Imaging.FocusSettings);      
+
   Finally
     Tv1.Items.EndUpdate
   End;
@@ -228,6 +234,7 @@ end;
 procedure TForm1.Button3Click(Sender: TObject);
 var LNewIp : String;
 begin
+  LNewIp := '192.168.0.';
   if InputQuery('New ip','',LNewIP) then
     EURL.Text := Format('onvif://%S:80/',[LNewIP]);
   
@@ -273,11 +280,37 @@ begin
   FONVIFManager.PTZ.SetHomePosition;
 end;
 
+
+procedure TForm1.BuildImagingFocusOptionsTreeView(Node: TTreeNode;const aFocusOptions:TImagingFocusSettings );    
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+    LIndex  : Integer;
+begin
+  Node := tv1.Items.AddChild(nil, 'FocusOptions');
+
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TImagingFocusSettings));
+
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aFocusOptions);
+      processTValue(Node,LField,LValue);
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
+
+
 procedure TForm1.BuildImagingSettingsTreeView(Node: TTreeNode;const aImaginingSettings:TImagingSettings );    
 var LContext: TRttiContext;
     LTypeObj: TRttiType;
     LField  : TRttiField;
     LValue  : TValue; 
+    LIndex  : Integer;
 begin
   Node := tv1.Items.AddChild(nil, 'ImaginingSettings');
 
@@ -288,11 +321,7 @@ begin
     for LField in LTypeObj.GetFields do
     begin
       LValue := LField.GetValue(@aImaginingSettings);
-
-      if LField.FieldType.TypeKind = tkRecord then
-         BuildRecordTreeView(Node, LField.Name, LValue)
-      else
-        tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+      processTValue(Node,LField,LValue);
     end;
   finally
     LContext.Free;
@@ -314,11 +343,7 @@ begin
     for LField in LTypeObj.GetFields do
     begin
       LValue := LField.GetValue(@aCapabilities);
-
-      if LField.FieldType.TypeKind = tkRecord then
-         BuildRecordTreeView(Node, LField.Name, LValue)
-      else
-        tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+      processTValue(Node,LField,LValue);
     end;
   finally
     LContext.Free;
@@ -338,11 +363,7 @@ begin
     for LField in LTypeObj.GetFields do
     begin
       LValue := LField.GetValue(@Profile);
-
-      if LField.FieldType.TypeKind = tkRecord then
-         BuildRecordTreeView(Node, LField.Name, LValue)
-      else
-        tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+      processTValue(Node,LField,LValue);
     end;
   finally
     LContext.Free;
@@ -363,16 +384,58 @@ begin
     for LField in LTypeObj.GetFields do
     begin
       LValue := LField.GetValue(@aPTZNode);
-
-      if LField.FieldType.TypeKind = tkRecord then
-         BuildRecordTreeView(Node, LField.Name, LValue)
-      else
-        tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+      processTValue(Node,LField,LValue);
     end;
   finally
     LContext.Free;
   end;
 end;
+
+procedure TForm1.processTValue(aNode: TTreeNode; aField: TRttiField; aValue: TValue);
+var
+  LIndex: Integer;
+  LElementValue: TValue;
+  LElementNode: TTreeNode;
+  LFields: TArray<TRttiField>;
+  I: Integer;
+  LFieldValue : TValue;
+begin
+  if aField.FieldType.TypeKind = tkRecord then
+    BuildRecordTreeView(aNode, aField.Name, aValue)
+  else if aField.FieldType.TypeKind = tkDynArray then
+  begin
+    // Handle dynamic arrays of records
+    for LIndex := 0 to aValue.GetArrayLength - 1 do
+    begin
+      LElementValue := aValue.GetArrayElement(LIndex);
+
+      // Create a new node for each element in the dynamic array
+      LElementNode := tv1.Items.AddChild(aNode, Format('%s[%d]', [aField.Name, LIndex+1]));
+
+      // Recursively process each element of the dynamic array
+      LFields := TRttiContext.Create.GetType(LElementValue.TypeInfo).GetFields;
+
+      if Length(LFields) > 0 then
+      begin
+       
+         for I := 0 to Length(LFields)-1 do
+         begin
+          LFieldValue := LFields[I].GetValue(LElementValue.GetReferenceToRawData);
+
+          if LFields[I].FieldType.TypeKind = tkRecord then
+            BuildRecordTreeView(LElementNode, LFields[I].Name, LFieldValue)
+          else
+            processTValue(LElementNode, LFields[I], LFieldValue)
+         end;
+      end
+      else            
+        tv1.Items.AddChild(LElementNode, LElementValue.ToString);
+    end;
+  end
+  else
+    tv1.Items.AddChild(aNode, Format('%s: %s', [aField.Name, aValue.ToString]));
+end;
+
 
 procedure TForm1.BuildRecordTreeView(Node: TTreeNode; const FieldName: string; const RecordValue: TValue);
 var LField: TRttiField;
@@ -383,13 +446,10 @@ begin
   for LField in TRttiContext.Create.GetType(RecordValue.TypeInfo).GetFields do
   begin
     LValue := LField.GetValue(RecordValue.GetReferenceToRawData);
-
-    if LField.FieldType.TypeKind = tkRecord then
-      BuildRecordTreeView(Node, LField.Name, LValue)
-    else
-      tv1.Items.AddChild(Node, Format('%s: %s', [LField.Name, LValue.ToString]));
+    processTValue(Node,LField,LValue);
   end;
 end;
+
 
 end.
 

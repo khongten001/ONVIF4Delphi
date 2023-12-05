@@ -31,7 +31,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.SyncObjs, System.Messaging,ONVIF.SOAP.Builder,
-  System.IOUtils,ONVIF.Structure.Imaging,  
+  System.IOUtils,ONVIF.Structure.Imaging,Soap.XSBuiltIns,  
   IdAuthenticationDigest, Winsock, XmlDoc, XmlIntf, XMLDom,System.Math, System.NetConsts,
   ONVIF.Structure.Device, ONVIF.Structure.Profile,System.Net.HttpClient,System.net.UrlClient,
   ONVIF.Structure.Capabilities,ONVIF.Structure.PTZ,ONVIF.XML.Utils;
@@ -51,24 +51,26 @@ CONST {Error Code}
       ONVIF_ERROR_PTZ_IMMAGING_IS_EMPTY              = -1011;
 
       {Imaging}
-      DEFAULT_TOKEN_IMAGING = 'VideoSourceToken';
+      DEFAULT_TOKEN_IMAGING   = 'VideoSourceToken';
+      DEFAULT_TOKEN_IMAGING_2 = 'VideoSourceConfig';
+      
       AUTO_TOKEN_IMAGING    = 'VideoSource_%d';
       
 Type
 
   {   
     TODO 
-      
-      
+      - PresetTour
+      - Recoding
+      - Auxiliar
       - Imaging 
+         -- Saturation, contrast ecc
          -- IRCut 
          -- IRIS 
          -- Focus
+              -- Absolute,Relative
          others --> https://www.onvif.org/specs/srv/img/ONVIF-Imaging-Service-Spec.pdf?441d4a&441d4a
-         
-      - PTZ
-        -- Preset 
-            -- SetPreset
+
 
         -- Move AbsoluteMove,RelativeMove
         -- GetServiceCapabilities 
@@ -147,8 +149,19 @@ Type
   /// </remarks>
   TEventTokenFound  = procedure (const aName,aToken : String;var aSetForDefault:Boolean) of object;
   
-  TONVIFManager = class;
-
+  TONVIFManager        = class;
+  TONVIFImagingManager = class;
+  TONVIFPTZManager     = class;
+  
+  TSupportedImagingInfo = class(TPersistent)
+  private
+    FOwnerImagingManager : TONVIFImagingManager;
+    function GetFocusSupported: Boolean;
+  public
+    constructor Create(aOwnerImagingManager : TONVIFImagingManager);  
+    property FocusSupported : Boolean read GetFocusSupported;
+  end;
+  
 
   /// <summary>
   ///
@@ -171,6 +184,8 @@ Type
     FSupportImageStabilization : Boolean;
     FToken                     : String;
     FImagingSettings           : TImagingSettings;
+    FSupportedInfo             : TSupportedImagingInfo;
+    FFocusSettings             : TImagingFocusSettings;
     
     /// <summary>    
     //  The capabilities reflect optional functions and functionality of a service. The information is 
@@ -180,7 +195,7 @@ Type
     /// </summary>           
     function GetCapabilities: Boolean;
     function isValidToken(const aMathodNameRequest:String): Boolean;
-    procedure SetToken(const Value: String);
+    procedure SetToken(const aValue: String);
     procedure ResetImagingSettings;
     /// <summary>
     ///  This operation requests the imaging setting for a video source on the device. A device 
@@ -189,7 +204,15 @@ Type
     ///  type in the [ONVIF Schema], then it should be possible to retrieve the imaging settings from 
      /// the device through the GetImagingSettings command.  
     /// </summary>      
-    function GetImagingSettings: Boolean;        
+    function GetImagingSettings: Boolean;
+    /// <summary>
+    ///  The GetMoveOptions command retrieves the focus lens move options to be used in the move 
+    ///  command as defined in Section 5.1.4. A device that supports the imaging service shall 
+    ///  support the GetMoveOptions command. The response to the command shall include all 
+    ///  supported Move Operations. If focus move is not supported at all, the reponse shall be empty
+    /// </summary>
+    function GetMoveOptions: Boolean;
+    function GetStatus: Boolean;
     
   public
     /// <summary>
@@ -197,20 +220,20 @@ Type
     /// </summary>
     /// <param name="aONVIFManager">Reference to the parent ONVIF manager instance.</param>  
     constructor Create(aONVIFManager : TONVIFManager); 
-    
-    property ImagingSettings           : TImagingSettings   read FImagingSettings;
-    property SupportImageStabilization : Boolean            read FSupportImageStabilization;
-    property SupportImagingPresets     : Boolean            read FSupportImagingPresets;    
+    destructor Destroy;override; 
+    property FocusSettings             : TImagingFocusSettings read FFocusSettings;
+    property ImagingSettings           : TImagingSettings      read FImagingSettings;
+    property SupportedInfo             : TSupportedImagingInfo read FSupportedInfo; 
+    property SupportImageStabilization : Boolean               read FSupportImageStabilization;
+    property SupportImagingPresets     : Boolean               read FSupportImagingPresets;    
     /// <summary>
     ///   Gets or sets the token of the VideoSource.
     /// </summary>    
     property Token                    : String              read FToken                         write SetToken;    
     
   End;
-
-  TONVIFPTZManager = class;
   
-  TSupportedInfo = class(TPersistent)
+  TSupportedPTZInfo = class(TPersistent)
     private
     FOwnerPTZManager : TONVIFPTZManager;
     function GetMaxPreset: Integer;
@@ -283,10 +306,12 @@ Type
     FPresentList   : TPTZPresetList;
     FToken         : String;    
     FPTZNode       : TPTZNode; 
-    FSupportedInfo : TSupportedInfo;
+    FSupportedInfo : TSupportedPTZInfo;
+    FPTZStatus     : TPTZStatus;
     function isValidToken(const aMathodNameRequest:String): Boolean;
     procedure ResetPTZNode;
     procedure SetToken(const Value: String);
+    procedure ResetPTZStatus;
   public
     /// <summary>
     ///   Constructor for initializing a new instance of the ONVIF PTZ Manager.
@@ -312,7 +337,7 @@ Type
     /// </returns>
     function GetNodes: Boolean;    
 
-    property SupportedInfo : TSupportedInfo  read FSupportedInfo;
+    property SupportedInfo : TSupportedPTZInfo  read FSupportedInfo;
     
     {Preset}
     /// <summary>
@@ -393,6 +418,22 @@ Type
     property PresetList : TPTZPresetList read FPresentList;
 
     {PTZ}
+    /// <summary>    
+    ///	A PTZ-capable device shall be able to report its PTZ status through the GetStatus command. 
+    ///	The PTZ status contains the following information:
+    ///	• Position (optional) – Specifies the absolute position of the PTZ unit together with the 
+    ///	space references. The default absolute spaces of the corresponding PTZ configuration 
+    ///	shall be referenced within the position element. This information shall be present if the 
+    ///	device signals support via the capability StatusPosition.
+    ///	• MoveStatus (optional) – Indicates if the Pan/Tilt/Zoom device unit is currently moving, idle 
+    ///	or in an unknown state. This information shall be present if the device signals support 
+    ///	via the capability MoveStatus. The state Unknown shall not be used during normal 
+    ///	operation, but is reserved to initialization or error conditions.
+    ///	• Error (optional) – States a current PTZ error condition. This field shall be present if the 
+    ///	MoveStatus signals Unkown.
+    ///	• UTC Time – Specifies the UTC time when this status was generated.
+    /// </summary>   
+    function GetStatus:Boolean;
     /// <summary>
 
     /// </summary>
@@ -506,24 +547,25 @@ Type
   /// </summary>  
   TONVIFManager = class
   private
-    FUrl                   : String;
-    FLastResponse          : String;
-    FPathFileResponseOnDisk: String;
-    FSaveResponseOnDisk    : Boolean;
-    FIsFixedToken          : Boolean;
-    FLastStatusCode        : Integer;
-    FSpeed                 : Byte;
-    FDevice                : TDeviceInformation;
-    FSOAPBuilder           : TONVIFSOAPBuilder;  
+    FUrl                     : String;
+    FLastResponse            : String;
+    FPathFileResponseOnDisk  : String;
+    FSaveResponseOnDisk      : Boolean;
+    FIsFixedToken            : Boolean;
+    FLastStatusCode          : Integer;
+    FSpeed                   : Byte;
+    FDevice                  : TDeviceInformation;
+    FSOAPBuilder             : TONVIFSOAPBuilder;  
 
-    FProfiles              : TProfiles;    
-    FCapabilities          : TCapabilitiesONVIF;
-    FPTZ                   : TONVIFPTZManager;
-    FImaging               : TONVIFImagingManager;
+    FProfiles                : TProfiles;    
+    FCapabilities            : TCapabilitiesONVIF;
+    FPTZ                     : TONVIFPTZManager;
+    FImaging                 : TONVIFImagingManager;
     {Event}
-    FOnWriteLog            : TEventWriteLog;
-    FOnGetAllInfo          : TNotifyEvent; 
-    FOnProfileTokenFound   : TEventTokenFound;
+    FOnWriteLog              : TEventWriteLog;
+    FOnReadInfoComplete      : TNotifyEvent; 
+    FOnPTZTokenFound     : TEventTokenFound;
+    FOnSourceiideoTokenFound : TEventTokenFound;
 
 
     /// <summary>
@@ -639,7 +681,7 @@ Type
     /// </summary>
     /// <param name="aRootNode">The root node of the XML document.</param>
     /// <returns>True if the XML is a valid SOAP XML; otherwise, false.</returns>
-    function IsValidSoapXML(const aRootNode: IXMLNode): Boolean;
+    function IsValidSoapXML(const aRootNode: IXMLNode;var aErrorFound:Boolean): Boolean;
 
 
     /// <summary>
@@ -658,9 +700,9 @@ Type
     procedure ResetProfiles;
     
     /// <summary>
-    ///   Executes the GetAllInfo event, triggering the retrieval of ONVIF information by ReadInfoAsync.
+    ///   Executes the DoOnReadInfoCompleate event, triggering the retrieval of ONVIF information by ReadInfoAsync.
     /// </summary>    
-    procedure DoGetAllInfo;
+    procedure DoOnReadInfoCompleate;
 
     procedure SetTokenImagingByPTZToken;    
   public
@@ -759,22 +801,34 @@ Type
     ///   Event triggered when retrieving comprehensive ONVIF information through the GetAllInfo method.
     /// </summary>
     /// <remarks>
-    ///   The <c>OnGetAllInfo</c> event is triggered when the GetAllInfo method is executed, facilitating
+    ///   The <c>FOnReadInfoComplete</c> event is triggered when the GetAllInfo method is executed, facilitating
     ///   the retrieval of detailed ONVIF information. By assigning a handler to this event, the application
     ///   can respond to the completion of the GetAllInfo operation, allowing for further processing or
     ///   presentation of the obtained ONVIF data.
     /// </remarks>    
-    property OnGetAllInfo             : TNotifyEvent       read FOnGetAllInfo            write FOnGetAllInfo;
+    property OnReadInfoComplete       : TNotifyEvent        read FOnReadInfoComplete            write FOnReadInfoComplete;
 
     /// <summary>
     ///   Property representing an event handler for the token found in profiles.
     /// </summary>
     /// <remarks>
-    ///   Use this property to assign a handler for the token found event in profiles.
+    ///   Use this property to assign a handler for the token found event in PTZConfigurazion.
     ///   The assigned handler should be of type TEventTokenFound, allowing customization
-    ///   of the default behavior for ONVIF commands related to profile tokens.
+    ///   of the default behavior for ONVIF commands related to PTZ tokens.
     /// </remarks>    
-    property OnProfileTokenFound      : TEventTokenFound   read FOnProfileTokenFound     write FOnProfileTokenFound;    
+    property OnPTZTokenFound          : TEventTokenFound    read FOnPTZTokenFound                    write FOnPTZTokenFound;   
+
+    /// <summary>
+    ///   Property representing an event handler for the token found in SourceVideo.
+    /// </summary>
+    /// <remarks>
+    ///   Use this property to assign a handler for the token found event in VideoSource.
+    ///   The assigned handler should be of type TEventTokenFound, allowing customization
+    ///   of the default behavior for ONVIF commands related to VideoSource tokens.
+    /// </remarks>    
+    property OnSourceiideoTokenFound   : TEventTokenFound   read FOnSourceiideoTokenFound            write FOnSourceiideoTokenFound;       
+
+     
 
     /// <summary>
     ///   Gets or sets whether to save the last HTTP response on disk.
@@ -904,20 +958,24 @@ begin
     FOnWriteLog(aFunction,aDescription,aLevel,aIsVerboseLog)
 end;
 
-
 procedure TONVIFManager.ReadInfo;
 begin
   {TODO get system date time to be use for password? }
-  GetCapabilities;
-  GetDeviceInformation;
-  GetProfiles;
-  PTZ.GetNodes; 
+  Try
+  if GetCapabilities then
+  begin
+    GetDeviceInformation;
+    GetProfiles;
+  end;
+  Finally
+    TThread.Queue(nil, DoOnReadInfoCompleate);  
+  End;  
 end;
 
-procedure TONVIFManager.DoGetAllInfo;
+procedure TONVIFManager.DoOnReadInfoCompleate;
 begin
-  if Assigned(FOnGetAllInfo) then
-    FOnGetAllInfo(Self);
+  if Assigned(FOnReadInfoComplete) then
+    FOnReadInfoComplete(Self);
 end;
 
 procedure TONVIFManager.ReadInfoAsync;
@@ -927,7 +985,6 @@ begin
     procedure
     begin
       ReadInfo;
-      TThread.Queue(nil, DoGetAllInfo);
     end
   );
   LThread.Start;
@@ -960,7 +1017,9 @@ begin
     
       if not FProfiles[I].VideoSourceConfiguration.token.IsEmpty then
       begin
-        if FProfiles[I].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING then
+        if (FProfiles[I].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING) or // How can I identify without using constants?
+           (FProfiles[I].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING_2)
+        then
           FImaging.Token  := Format(AUTO_TOKEN_IMAGING,[I+1])
         else
           FImaging.Token  := FProfiles[I].VideoSourceConfiguration.token.Trim;
@@ -1006,7 +1065,7 @@ begin
   end;
   {$REGION 'Log'}
   {TSI:IGNORE ON}
-      DoWriteLog(aMathodNameRequest,Format('Internal error [%d] description [%s]',[aErrorCode,result]),tpLivError);
+      DoWriteLog(aMathodNameRequest,Format('Url [%s] Internal error [%d] description [%s]',[FUrl,aErrorCode,result]),tpLivError);
   {TSI:IGNORE OFF}
   {$ENDREGION}
 end;
@@ -1044,11 +1103,13 @@ var LResultStr         : String;
     LCapabilitieNode   : IXMLNode;
     LNodeTmp1          : IXMLNode;
     LNodeTmp2          : IXMLNode;    
+    I                  : Integer;
+    X                  : Integer;    
+    LErrorFound        : Boolean;
 begin
   Result := false;
 
   ResetCapabilities;
-  if not UrlIsValid('TONVIFManager.GetCapabilities') then Exit;  
   Result := ExecuteRequest(GetUrlByType(atDeviceService), FSOAPBuilder.PrepareGetCapabilitiesRequest, LResultStr);
 
   if Result then
@@ -1061,7 +1122,7 @@ begin
     LXMLDoc := TXMLDocument.Create(nil);
     LXMLDoc.LoadFromXML(LResultStr);
 
-    if not IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode     := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LCapabilitieNode  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Device');
@@ -1079,8 +1140,19 @@ begin
         FCapabilities.Device.Network.DynDNS            := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'DynDNS'),False);  
 
         LNodeTmp2                                      := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Extension');
-        if Assigned(LNodeTmp2) then        
+        if Assigned(LNodeTmp2) then      
+        begin  
           FCapabilities.Device.Network.Extension.Dot11Configuration := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Dot11Configuration'),False);
+          for I := 0 to LNodeTmp2.ChildNodes.Count -1 do
+          begin
+            if not SameText(LNodeTmp2.ChildNodes[I].DOMNode.localName,'Dot11Configuration') then
+              {$REGION 'Log'}
+              {TSI:IGNORE ON}
+                  DoWriteLog('TONVIFPTZManager.GetCapabilities',Format('Unsupported node name [%s]',[LNodeTmp2.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
+              {TSI:IGNORE OFF}
+              {$ENDREGION}                                                
+          end;            
+        end;
       end;
 
       LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LCapabilitieNode,'System');
@@ -1130,28 +1202,77 @@ begin
       LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'PTZ'); 
       if Assigned(LCapabilitieNode) then      
         FCapabilities.PTZ.XAddr := TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'XAddr');
+        
       {Extension}
-       LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Extension',True); 
+      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Extension',True); 
+
       if Assigned(LCapabilitieNode) then
       begin       
+        for I := 0 to LCapabilitieNode.ChildNodes.Count -1 do
+        begin
+          for X := 0 to LCapabilitieNode.ChildNodes[I].ChildNodes.Count -1 do
+          begin                             
+            if not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'Search') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'Replay') and          
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'Extension') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'DeviceIO') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'VideoSources') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'VideoOutputs') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'AudioSources') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'AudioOutputs') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'RelayOutputs') and 
+               not SameText(LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName,'Recording')
+              
+            then
+              {$REGION 'Log'}
+              {TSI:IGNORE ON}
+                  DoWriteLog('TONVIFManager.GetCapabilities',Format('Unsupported node name [%s]',[LCapabilitieNode.ChildNodes[I].ChildNodes[X].DOMNode.localName]),tpLivWarning);      
+              {TSI:IGNORE OFF}
+              {$ENDREGION}                                                
+          end;         
+        end;
+
         LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LCapabilitieNode,'Search');  
         if Assigned(LNodeTmp1) then
         begin
           FCapabilities.Extension.Search.XAddr           := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'XAddr');
           FCapabilities.Extension.Search.MetadataSearch  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MetadataSearch'),False);    
         end;
+        
         LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LCapabilitieNode,'Replay');  
         if Assigned(LNodeTmp1) then
-          FCapabilities.Extension.Replay.XAddr := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'XAddr');           
+          FCapabilities.Extension.Replay.XAddr := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'XAddr'); 
+          
+        LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LCapabilitieNode,'DeviceIO');  
+        if Assigned(LNodeTmp1) then
+          FCapabilities.Extension.DeviceIO.XAddr := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'XAddr'); 
+
+        LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LCapabilitieNode,'Recording');  
+        if Assigned(LNodeTmp1) then
+        begin
+          FCapabilities.Extension.Recording.XAddr              := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'XAddr'); 
+          FCapabilities.Extension.Recording.ReceiverSource     := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'ReceiverSource'),False);
+          FCapabilities.Extension.Recording.MediaProfileSource := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MediaProfileSource'),False); 
+          FCapabilities.Extension.Recording.DynamicRecordings  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'DynamicRecordings'),False); 
+          FCapabilities.Extension.Recording.MaxStringLength    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MaxStringLength'),-1); 
+
+        end;
+       
+        FCapabilities.Extension.VideoSources := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'VideoSources'),-1);         
+        FCapabilities.Extension.VideoOutputs := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'VideoOutputs'),-1);         
+        FCapabilities.Extension.AudioSources := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'AudioSources'),-1);         
+        FCapabilities.Extension.AudioOutputs := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'AudioOutputs'),-1);         
+        FCapabilities.Extension.RelayOutputs := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'RelayOutputs'),-1);         
+                   
       end;              
     end;
   end
   else
     {$REGION 'Log'}
     {TSI:IGNORE ON}
-        DoWriteLog('TONVIFManager.GetCapabilities',Format(' Error [%d] response [%s]',[FLastStatusCode,LResultStr]),tpLivError);      
+        DoWriteLog('TONVIFManager.GetCapabilities',Format('Url [%s] Error [%d] LastResponse [%s]',[FUrl,FLastStatusCode,FLastResponse]),tpLivError);      
     {TSI:IGNORE OFF}
-    {$ENDREGION}
+    {$ENDREGION}    
 end;
 
 
@@ -1168,8 +1289,31 @@ var LResultStr         : String;
     LProfile           : TProfile;
     LCurrentIndex      : integer;
     LSetForDefault     : Boolean;  
+    LSetVSourceToken   : Boolean; 
     LTokenPtzSetted    : Boolean; 
     LNewToken          : String;
+    LErrorFound        : Boolean;
+
+    Procedure SetVideoSourceToken;
+    begin
+      if not LProfile.VideoSourceConfiguration.token.IsEmpty then
+      begin
+        if (LProfile.VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING) or  // How can I identify without using constants?
+           (LProfile.VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING_2) 
+        then
+          FImaging.Token  := Format(AUTO_TOKEN_IMAGING,[LCurrentIndex+1])
+        else
+          FImaging.Token  := LProfile.VideoSourceConfiguration.token.Trim;
+
+        {$REGION 'Log'}
+        {TSI:IGNORE ON}
+            DoWriteLog('TONVIFManager.GetProfiles',Format('Set Imaging Token to [%s], VideoSourceConfiguration token [%s] profile token [%s]',[FImaging.Token ,LProfile.VideoSourceConfiguration.token,LProfile.token]),tpLivInfo,true);      
+        {TSI:IGNORE OFF}
+        {$ENDREGION}                
+        LTokenPtzSetted := False;
+        LSetVSourceToken:= False;
+      end;    
+    end;
 begin
   Result := False;
   ResetProfiles;
@@ -1187,7 +1331,7 @@ begin
     LXMLDoc := TXMLDocument.Create(nil);
     LXMLDoc.LoadFromXML(LResultStr);
 
-    if not IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LProfilesNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetProfilesResponse');
@@ -1198,9 +1342,10 @@ begin
 
       SetLength(FProfiles,LProfilesNode.ChildNodes.Count);
 
-      LCurrentIndex  := 0;  
-      LSetForDefault := not FIsFixedToken;
-      LTokenPtzSetted:= False;      
+      LCurrentIndex    := 0;  
+      LSetForDefault   := not FIsFixedToken;
+      LSetVSourceToken := FIsFixedToken;
+      LTokenPtzSetted  := False;      
       for I := 0 to LProfilesNode.ChildNodes.Count -1 do
       begin  
 
@@ -1214,20 +1359,20 @@ begin
         begin
 
           LProfile.VideoSourceConfiguration.token       := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
+          if Assigned(FOnPTZTokenFound) then
+            FOnPTZTokenFound(LProfile.name,LProfile.VideoSourceConfiguration.token,LSetVSourceToken);
+          
           LProfile.VideoSourceConfiguration.name        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
-          LProfile.VideoSourceConfiguration.UseCount    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), 0);
+          LProfile.VideoSourceConfiguration.UseCount    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
           LProfile.VideoSourceConfiguration.SourceToken := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'SourceToken');
-
-          if LSetForDefault then
-            FImaging.Token := LProfile.VideoSourceConfiguration.token;
             
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'Bounds');          
           if Assigned(LChildNodeNode) then
           begin
-            LProfile.VideoSourceConfiguration.Bounds.x      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'x'), 0);
-            LProfile.VideoSourceConfiguration.Bounds.y      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'y'), 0);
-            LProfile.VideoSourceConfiguration.Bounds.width  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'width'), 0);
-            LProfile.VideoSourceConfiguration.Bounds.height := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'height'), 0);
+            LProfile.VideoSourceConfiguration.Bounds.x      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'x'), -1);
+            LProfile.VideoSourceConfiguration.Bounds.y      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'y'), -1);
+            LProfile.VideoSourceConfiguration.Bounds.width  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'width'), -1);
+            LProfile.VideoSourceConfiguration.Bounds.height := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'height'), -1);
           end;
         end;
         
@@ -1237,38 +1382,38 @@ begin
         begin
           LProfile.VideoEncoderConfiguration.token           := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
           LProfile.VideoEncoderConfiguration.name            := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
-          LProfile.VideoEncoderConfiguration.UseCount        := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), 0);
+          LProfile.VideoEncoderConfiguration.UseCount        := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
           LProfile.VideoEncoderConfiguration.Encoding        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Encoding');
-          LProfile.VideoEncoderConfiguration.Quality         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Quality'),0);
+          LProfile.VideoEncoderConfiguration.Quality         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Quality'),-1);
           LProfile.VideoEncoderConfiguration.SessionTimeout  := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'SessionTimeout');
           
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'Resolution');
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.Resolution.width  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Width'), 0);
-            LProfile.VideoEncoderConfiguration.Resolution.height := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Height'), 0);
+            LProfile.VideoEncoderConfiguration.Resolution.width  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Width'), -1);
+            LProfile.VideoEncoderConfiguration.Resolution.height := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Height'), -1);
           end;
           
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'RateControl');  
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.RateControl.FrameRateLimit   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'FrameRateLimit'), 0);
-            LProfile.VideoEncoderConfiguration.RateControl.EncodingInterval := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'EncodingInterval'), 0);
-            LProfile.VideoEncoderConfiguration.RateControl.BitrateLimit     := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'BitrateLimit'), 0);            
+            LProfile.VideoEncoderConfiguration.RateControl.FrameRateLimit   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'FrameRateLimit'), -1);
+            LProfile.VideoEncoderConfiguration.RateControl.EncodingInterval := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'EncodingInterval'), -1);
+            LProfile.VideoEncoderConfiguration.RateControl.BitrateLimit     := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'BitrateLimit'), -1);            
           end;   
 
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'H264');    
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.H264.GovLength   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'GovLength'), 0);
+            LProfile.VideoEncoderConfiguration.H264.GovLength   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'GovLength'), -1);
             LProfile.VideoEncoderConfiguration.H264.H264Profile := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'H264Profile')
           end;   
 
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'Multicast');    
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.Multicast.Port      := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Port'), 0);
-            LProfile.VideoEncoderConfiguration.Multicast.TTL       := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'TTL'), 0);            
+            LProfile.VideoEncoderConfiguration.Multicast.Port      := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Port'), -1);
+            LProfile.VideoEncoderConfiguration.Multicast.TTL       := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'TTL'), -1);            
             LProfile.VideoEncoderConfiguration.Multicast.AutoStart := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'AutoStart'),false);
 
             LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'Address'); 
@@ -1283,23 +1428,30 @@ begin
         begin
           LProfile.PTZConfiguration.token := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
 
-          if LProfile.PTZConfiguration.token = 'PTZToken' then
+          if ( LProfile.PTZConfiguration.token = 'PTZToken') or
+             ( LProfile.PTZConfiguration.token = 'PtzConf1')   // How can I identify without using constants?
+          then
             LNewToken := LProfile.token
           else
             LNewToken := LProfile.PTZConfiguration.token;
             
-          if Assigned(FOnProfileTokenFound) then
-            FOnProfileTokenFound(LProfile.name,LNewToken,LSetForDefault);
+          if Assigned(FOnPTZTokenFound) then
+            FOnPTZTokenFound(LProfile.name,LNewToken,LSetForDefault);
             
           if LSetForDefault then
           begin
+            {$REGION 'Log'}
+            {TSI:IGNORE ON}
+                DoWriteLog('TONVIFManager.GetProfiles',Format('Set PTZ Token to [%s], PTZConfiguration token [%s] profile token [%s]',[PTZ.Token ,LProfile.PTZConfiguration.token,LProfile.token]),tpLivInfo,true);      
+            {TSI:IGNORE OFF}
+            {$ENDREGION}            
             PTZ.Token       := LNewToken;
             LTokenPtzSetted := True;
           end;
           
           LSetForDefault := False;         
           LProfile.PTZConfiguration.Name      := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Name');
-          LProfile.PTZConfiguration.UseCount  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'UseCount'),0);          
+          LProfile.PTZConfiguration.UseCount  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'UseCount'),-1);          
           LProfile.PTZConfiguration.NodeToken := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'NodeToken');
           
           LChildNodeNode                      := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'DefaultPTZSpeed');
@@ -1308,12 +1460,12 @@ begin
             LChildNodeNode2 :=TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'PanTilt'); 
             if Assigned(LChildNodeNode2) then            
             begin
-              LProfile.PTZConfiguration.DefaultPTZSpeed.PanTilt.x := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'X'),0);
-              LProfile.PTZConfiguration.DefaultPTZSpeed.PanTilt.Y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Y'),0);              
+              LProfile.PTZConfiguration.DefaultPTZSpeed.PanTilt.x := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'X'),-1);
+              LProfile.PTZConfiguration.DefaultPTZSpeed.PanTilt.Y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Y'),-1);              
             end;  
             LChildNodeNode2 :=TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'Zoom'); 
             if Assigned(LChildNodeNode2) then            
-              LProfile.PTZConfiguration.DefaultPTZSpeed.Zoom := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'X'),0);
+              LProfile.PTZConfiguration.DefaultPTZSpeed.Zoom := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Zoom'),-1);
           end;
           
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'PanTiltLimits');
@@ -1327,15 +1479,15 @@ begin
 
               if Assigned(LChildNodeNode3) then
               begin
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), 0);
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), 0);                 
+                 LProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
+                 LProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);                 
               end;
               
               LChildNodeNode3  := TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode2,'YRange'); 
               if Assigned(LChildNodeNode3) then
               begin
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), 0);
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), 0);                 
+                 LProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
+                 LProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);                 
               end;                            
             end;              
           end;  
@@ -1351,8 +1503,8 @@ begin
 
               if Assigned(LChildNodeNode3) then
               begin
-                 LProfile.PTZConfiguration.ZoomLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), 0);
-                 LProfile.PTZConfiguration.ZoomLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), 0);
+                 LProfile.PTZConfiguration.ZoomLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
+                 LProfile.PTZConfiguration.ZoomLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);
               end;              
             end          
           end;        
@@ -1367,17 +1519,8 @@ begin
         // TODO Continue parsing TExtension                
         
         FProfiles[LCurrentIndex] := LProfile;
-        if LTokenPtzSetted then
-        begin
-          if not LProfile.VideoSourceConfiguration.token.IsEmpty then
-          begin
-            if LProfile.VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING then
-              FImaging.Token  := Format(AUTO_TOKEN_IMAGING,[LCurrentIndex+1])
-            else
-              FImaging.Token  := LProfile.VideoSourceConfiguration.token.Trim;
-            LTokenPtzSetted := False;
-          end;
-        end;
+        if LTokenPtzSetted or LSetVSourceToken then
+          SetVideoSourceToken;
         Inc(LCurrentIndex);
       end;      
 
@@ -1394,7 +1537,7 @@ begin
   else
     {$REGION 'Log'}
     {TSI:IGNORE ON}
-        DoWriteLog('TONVIFManager.GetProfiles',Format(' Error [%d] response [%s]',[FLastStatusCode,LResultStr]),tpLivError);      
+        DoWriteLog('TONVIFManager.GetProfiles',Format('Url [%s] Error [%d] LastResponse [%s]',[FUrl,FLastStatusCode,FLastResponse]),tpLivError);      
     {TSI:IGNORE OFF}
     {$ENDREGION}  
 end;
@@ -1403,6 +1546,7 @@ function TONVIFManager.GetDeviceInformation: Boolean;
 var LResultStr         : String;
     LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
+    LErrorFound        : Boolean;
 
     Procedure SaveNodeInfo(const aNodeName:String;var aNodeResult:String);
     var LXMLNode    : IXMLNode;
@@ -1429,7 +1573,7 @@ begin
     LXMLDoc := TXMLDocument.Create(nil);
     LXMLDoc.LoadFromXML(LResultStr);
 
-    if not IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
 
@@ -1444,14 +1588,16 @@ begin
   else
     {$REGION 'Log'}
     {TSI:IGNORE ON}
-        DoWriteLog('TONVIFManager.GetDeviceInformation',Format(' Error [%d] response [%s]',[FLastStatusCode,LResultStr]),tpLivError);      
+        DoWriteLog('TONVIFManager.GetDeviceInformation',Format('Url [%s] Error [%d] LastResponse [%s]',[FUrl,FLastStatusCode,FLastResponse]),tpLivError);      
     {TSI:IGNORE OFF}
-    {$ENDREGION}
+    {$ENDREGION}    
 end;
 
 function TONVIFManager.ExecuteRequest(const aAddr, aRequest: String; Var aAnswer: String): Boolean;
-Var LInStream : TStringStream; 
-    LOutStream: TStringStream;
+Var LInStream  : TStringStream; 
+    LOutStream : TStringStream;
+    LXMLDoc    : IXMLDocument;
+    LErrorFound: Boolean;
 begin
   LInStream  := TStringStream.Create(aRequest);
   Try
@@ -1460,6 +1606,36 @@ begin
       Result        := ExecuteRequest(aAddr, LInStream, LOutStream);
       aAnswer       := LOutStream.DataString;  
       FLastResponse := aAnswer; 
+
+      if not Result then
+      begin
+        Try
+          if FLastStatusCode <> ONVIF_ERROR_DELPHI_EXCEPTION then
+          begin
+            LXMLDoc := TXMLDocument.Create(nil);
+            LXMLDoc.LoadFromXML(aAnswer);
+            if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then 
+            begin
+              if not LErrorFound then
+              begin
+                {$REGION 'Log'}
+                {TSI:IGNORE ON}
+                    DoWriteLog('TONVIFManager.ExecuteRequest',Format('URL [%s] Error [%d] response [%s]',[FUrl,FLastStatusCode,aAnswer]),tpLivError);      
+                {TSI:IGNORE OFF}
+                {$ENDREGION}
+              end;
+            end;
+          end;
+        Except on E : Exception do
+          {$REGION 'Log'}
+          {TSI:IGNORE ON}
+              DoWriteLog('TONVIFManager.ExecuteRequest',Format('ULR [%s] [Parser XML response exception [%s], Execute request Error [%d] response [%s]',[FUrl,e.Message,FLastStatusCode,aAnswer]),tpLivError);      
+          {TSI:IGNORE OFF}
+          {$ENDREGION}           
+        End;
+          
+      end;
+      
       if FSaveResponseOnDisk then
         TFile.AppendAllText(FPathFileResponseOnDisk,aAnswer+sLineBreak,TEncoding.UTF8);
     finally
@@ -1489,7 +1665,7 @@ begin
         ResponseTimeout       := 300000;
         LResponse             := Post(aAddr, aInStream,aOutStream);
         FLastStatusCode       := LResponse.StatusCode;
-        Result                := (FLastStatusCode div 100) = 2
+        Result                := (FLastStatusCode div 100) = 2;
       Except on E:Exception do
         begin
           FLastStatusCode := ONVIF_ERROR_DELPHI_EXCEPTION;
@@ -1565,18 +1741,32 @@ begin
   FCapabilities.Extension.Search.XAddr                               := String.Empty;
   FCapabilities.Extension.Search.MetadataSearch                      := False;
   FCapabilities.Extension.Replay.XAddr                               := String.Empty;
+  FCapabilities.Extension.DeviceIO.XAddr                             := String.Empty;  
+  FCapabilities.Extension.Recording.XAddr                            := String.Empty;    
+  FCapabilities.Extension.Recording.MaxStringLength                  := -1;    
+  FCapabilities.Extension.Recording.ReceiverSource                   := false;
+  FCapabilities.Extension.Recording.MediaProfileSource               := false;
+  FCapabilities.Extension.Recording.DynamicRecordings                := false;
+  FCapabilities.Extension.Recording.DynamicTracks                    := false;    
+  FCapabilities.Extension.VideoSources                               := -1;  
+  FCapabilities.Extension.VideoOutputs                               := -1;
+  FCapabilities.Extension.AudioSources                               := -1;
+  FCapabilities.Extension.AudioOutputs                               := -1;
+  FCapabilities.Extension.RelayOutputs                               := -1;        
 end;
 
-Function TONVIFManager.IsValidSoapXML(const aRootNode :IXMLNode):Boolean;
+Function TONVIFManager.IsValidSoapXML(const aRootNode :IXMLNode;var aErrorFound:Boolean):Boolean;
 CONST cNodeSOAPEnvelope  = 'Envelope';
       cNodeSOAPBodyFault = 'Fault';
       cNodeFaultCode     = 'faultcode';
       cNodeFaultString   = 'faultstring';            
 var LSoapBodyNode      : IXMLNode;  
     LSoapBodyFaultNode : IXMLNode; 
-    LSoapBodyTmpNode   : IXMLNode; 
+    LSoapBodyTmpNode   : IXMLNode;
+    LFaultCode         : String;
 begin
-  Result := false;
+  Result       := false;
+  aErrorFound  := False;
 
   if not Pos(cNodeSOAPEnvelope,aRootNode.NodeName) = 0  then 
   begin
@@ -1598,15 +1788,34 @@ begin
   begin                                                       
     LSoapBodyTmpNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyFaultNode,cNodeFaultCode);
     if Assigned(LSoapBodyTmpNode) then    
-      FLastStatusCode := StrToIntDef(LSoapBodyTmpNode.Text,ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND)
+      LFaultCode := LSoapBodyTmpNode.Text
     else
-      FLastStatusCode := ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND; 
+      LFaultCode := 'not found';
       
     LSoapBodyTmpNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyFaultNode,cNodeFaultString);      
     if Assigned(LSoapBodyTmpNode) then    
-      FLastResponse := LSoapBodyTmpNode.Text
+    begin
+      aErrorFound   := True;
+      FLastResponse := Format('Faultcode [%s] faultstring [%s]',[LFaultCode,LSoapBodyTmpNode.Text])
+    end
     else
-      FLastResponse := InternalErrorToString('TONVIFManager.IsValidSoapXML',FLastStatusCode);    
+    begin
+      LSoapBodyTmpNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyFaultNode,'Reason');
+      if Assigned(LSoapBodyTmpNode) then      
+      begin
+        aErrorFound   := True;
+        FLastResponse := Format('Faultcode [%s] faultstring [%s]',[LFaultCode,TONVIFXMLUtils.GetChildNodeValue(LSoapBodyTmpNode,'Text')])
+      end
+      else
+        FLastResponse := Format('Faultcode [%s] faultstring not found',[LFaultCode])      
+    end;
+
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        DoWriteLog('TONVIFManager.IsValidSoapXML',Format('ULR [%s] SOAP error [%d] description [%s]',[FUrl,FLastStatusCode,FLastResponse]),tpLivError);
+    {TSI:IGNORE OFF}
+    {$ENDREGION}      
+          
     exit;
   end;
 
@@ -1618,12 +1827,14 @@ constructor TONVIFPTZManager.Create(aONVIFManager: TONVIFManager);
 begin
   FONVIFManager := aONVIFManager;
   FPresentList  := TPTZPresetList.Create;
-  FSupportedInfo:= TSupportedInfo.Create(self);
+  FSupportedInfo:= TSupportedPTZInfo.Create(self);
   ResetPTZNode;
+  ResetPTZStatus;
 end;
 
 destructor TONVIFPTZManager.Destroy;
 begin
+  ResetPTZStatus;
   ResetPTZNode;
   FreeAndNil(FSupportedInfo);
   FreeAndNil(FPresentList);
@@ -1709,6 +1920,7 @@ var LResponseStr    : String;
     LPanTiltNode    : IXMLNode;    
     LPreset         : PTPTZPreset;
     I               : Integer;
+    LErrorFound     : Boolean;
 begin
   FPresentList.Clear;
   Result := False;
@@ -1727,7 +1939,7 @@ begin
     LXMLDoc := TXMLDocument.Create(nil);
     LXMLDoc.LoadFromXML(LResponseStr);
 
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);        
     LPresetListNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetPresetsResponse');  
@@ -1735,17 +1947,17 @@ begin
     for I := 0 to LPresetListNode.ChildNodes.Count -1 do
     begin
       New(LPreset);
-      LPreset.Token := String(LPresetListNode.ChildNodes[I].Attributes['token']);
-      LPreset.Name  := TONVIFXMLUtils.GetChildNodeValue(LPresetListNode.ChildNodes[I],'Name');     
+      LPreset^.Token := String(LPresetListNode.ChildNodes[I].Attributes['token']);
+      LPreset^.Name  := TONVIFXMLUtils.GetChildNodeValue(LPresetListNode.ChildNodes[I],'Name');     
       LPtzPosNode   := TONVIFXMLUtils.RecursiveFindNode(LPresetListNode.ChildNodes[I],'PTZPosition');
       if Assigned(LPtzPosNode) then
       begin
-         LPreset.PTZPosition.Zoom := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(TONVIFXMLUtils.RecursiveFindNode(LPtzPosNode,'Zoom'),'x'),0);
+         LPreset^.PTZPosition.Zoom := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(TONVIFXMLUtils.RecursiveFindNode(LPtzPosNode,'Zoom'),'x'),-1);
          LPanTiltNode             := TONVIFXMLUtils.RecursiveFindNode(LPtzPosNode,'PanTilt');
          if Assigned(LPanTiltNode) then
          begin
-            LPreset.PTZPosition.PanTilt.X := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LPanTiltNode,'x'),0);
-            LPreset.PTZPosition.PanTilt.y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LPanTiltNode,'y'),0);            
+            LPreset^.PTZPosition.PanTilt.X := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LPanTiltNode,'x'),-1);
+            LPreset^.PTZPosition.PanTilt.y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LPanTiltNode,'y'),-1);            
          end;         
       end;
 
@@ -1774,36 +1986,32 @@ var LResponseStr   : String;
     LFoundAux      : Boolean;
     LTmpStr        : string;  
     LTmpStrSplit   : string;
+    LErrorFound    : Boolean;
 
-    Procedure BuilArrayXY(aParentNode: IXMLNode;var aArrayXY: TArrayXY);
+    Procedure BuildArrayXY(aParentNode: IXMLNode;var aArrayXY: TArrayXY);
     var LCount           : Integer;
         LNodeRangeBuild  : IXMLNode;    
     begin
-      {$REGION 'Log'}
-      {TSI:IGNORE ON}
-          FONVIFManager.DoWriteLog('TONVIFPTZManager.GetNodes[BuilArrayXY]',Format(' Node child name  [%s]',[LNodesList.ChildNodes[X].DOMNode.localName]),tpLivInfo,True);      
-      {TSI:IGNORE OFF}
-      {$ENDREGION}    
       LCount := Length(aArrayXY);
       SetLength(aArrayXY,LCount+1);
 
       aArrayXY[LCount].URI :=  TONVIFXMLUtils.GetChildNodeValue(aParentNode,'URI');
-      LNodeRangeBuild := TONVIFXMLUtils.RecursiveFindNode(aParentNode,'XRange');
+      LNodeRangeBuild      := TONVIFXMLUtils.RecursiveFindNode(aParentNode,'XRange');
       if Assigned(LNodeRangeBuild) then
       begin
-        aArrayXY[LCount].XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Min'),0);
-        aArrayXY[LCount].XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Max'),0);
+        aArrayXY[LCount].XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Min'),-1);
+        aArrayXY[LCount].XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Max'),-1);
       end;
           
       LNodeRangeBuild := TONVIFXMLUtils.RecursiveFindNode(aParentNode,'YRange');          
       if Assigned(LNodeRangeBuild) then
       begin
-        aArrayXY[LCount].YRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Min'),0);
-        aArrayXY[LCount].YRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Max'),0);
+        aArrayXY[LCount].YRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Min'),-1);
+        aArrayXY[LCount].YRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Max'),-1);
       end;     
     end;
 
-    Procedure BuilArrayX(aParentNode: IXMLNode;var aArrayX: TArrayX);
+    Procedure BuildArrayX(aParentNode: IXMLNode;var aArrayX: TArrayX);
     var LCount           : Integer;
         LNodeRangeBuild  : IXMLNode;    
     begin
@@ -1811,16 +2019,17 @@ var LResponseStr   : String;
       SetLength(aArrayX,LCount+1);
 
       aArrayX[LCount].URI :=  TONVIFXMLUtils.GetChildNodeValue(aParentNode,'URI');
-      LNodeRangeBuild := TONVIFXMLUtils.RecursiveFindNode(aParentNode,'XRange');
+      LNodeRangeBuild     := TONVIFXMLUtils.RecursiveFindNode(aParentNode,'XRange');
       if Assigned(LNodeRangeBuild) then
       begin
-        aArrayX[LCount].XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Min'),0);
-        aArrayX[LCount].XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Max'),0);
+        aArrayX[LCount].XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Min'),-1);
+        aArrayX[LCount].XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeRangeBuild,'Max'),-1);
       end;
       
     end;    
 begin
   Result := False;  
+  ResetPTZNode;
   if not FONVIFManager.UrlIsValid('TONVIFPTZManager.GetNodes') then Exit; 
   if not isValidToken('TONVIFPTZManager.GetNodes') then Exit;
 
@@ -1837,7 +2046,7 @@ begin
     LXMLDoc := TXMLDocument.Create(nil);
     LXMLDoc.LoadFromXML(LResponseStr);
 
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LNodes          := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetNodesResponse');
@@ -1857,108 +2066,212 @@ begin
             FONVIFManager.DoWriteLog('TONVIFPTZManager.GetNodes','SupportedPTZSpaces not found',tpLivError);      
         {TSI:IGNORE OFF}
         {$ENDREGION}
-
+        continue;
       end;
+      
       for X := 0 to LNodesList.ChildNodes.Count -1 do
       begin
-        {$REGION 'Log'}
-        {TSI:IGNORE ON}
-            FONVIFManager.DoWriteLog('TONVIFPTZManager.GetNodes',Format('[SupportedPTZSpaces] Node child name  [%s]',[LNodesList.ChildNodes[X].DOMNode.localName]),tpLivInfo,True);      
-        {TSI:IGNORE OFF}
-        {$ENDREGION}
                                             
         if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'AbsolutePanTiltPositionSpace') then
-          BuilArrayXY(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.AbsolutePanTiltPositionSpace)
+          BuildArrayXY(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.AbsolutePanTiltPositionSpace)
         else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'AbsoluteZoomPositionSpace') then
-          BuilArrayX(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.AbsoluteZoomPositionSpace)
+          BuildArrayX(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.AbsoluteZoomPositionSpace)
         else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'RelativePanTiltTranslationSpace') then
-          BuilArrayXY(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.RelativePanTiltTranslationSpace)
+          BuildArrayXY(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.RelativePanTiltTranslationSpace)
         else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'RelativeZoomTranslationSpace') then
-          BuilArrayX(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.RelativeZoomTranslationSpace)
+          BuildArrayX(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.RelativeZoomTranslationSpace)
         else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'ContinuousPanTiltVelocitySpace') then
-          BuilArrayXY(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.ContinuousPanTiltVelocitySpace)
+          BuildArrayXY(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.ContinuousPanTiltVelocitySpace)
         else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'ContinuousZoomVelocitySpace') then
-          BuilArrayX(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.ContinuousZoomVelocitySpace)
+          BuildArrayX(LNodesList.ChildNodes[X],FPTZNode.SupportedPTZSpaces.ContinuousZoomVelocitySpace)
         else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'PanTiltSpeedSpace')then
         begin
           FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.URI := TONVIFXMLUtils.GetChildNodeValue(LNodesList.ChildNodes[X],'URI');
           LNodeTmp                                          := TONVIFXMLUtils.RecursiveFindNode(LNodesList.ChildNodes[X],'XRange');
           if Assigned(LNodeTmp) then
           begin
-            FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),0);
-            FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),0);
+            FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);
+            FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
           end;        
         end                                
-        else if SameText(LNodesList.ChildNodes[i].DOMNode.localName,'ZoomSpeedSpace') then
+        else if SameText(LNodesList.ChildNodes[X].DOMNode.localName,'ZoomSpeedSpace') then
         begin
           FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.URI := TONVIFXMLUtils.GetChildNodeValue(LNodesList.ChildNodes[X],'URI');
           LNodeTmp                                       := TONVIFXMLUtils.RecursiveFindNode(LNodesList.ChildNodes[X],'XRange');
           if Assigned(LNodeTmp) then
           begin
-            FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),0);
-            FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),0);
+            FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);
+            FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
           end;           
-        end;                                          
-      end;
-      FPTZNode.MaximumNumberOfPresets := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'MaximumNumberOfPresets'),0);  
-      FPTZNode.HomeSupported          := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'HomeSupported'),False); 
-
-      if SameText(LNodesList.ChildNodes[i].DOMNode.localName,'AuxiliaryCommands') then
-      begin
-        LFoundAux    := False;        
-        LTmpStr      := LNodesList.ChildNodes[i].Text;
-        if not LTmpStr.Trim.IsEmpty then
-        begin
-          LTmpStrSplit := LNodesList.ChildNodes[i].Text;
-          LCountAux := Length(FPTZNode.AuxiliaryCommands);
-
-          if LTmpStr.Contains('|') then
-            LTmpStrSplit := LTmpStr.Split(['|'])[0];
-            
-          for Z := 0 to LCountAux do
-          begin
-            if SameText(FPTZNode.AuxiliaryCommands[Z].Name,LTmpStrSplit) then
-            begin
-              LFoundAux      := True;
-              LCountAuxValue := Length(FPTZNode.AuxiliaryCommands[Z].Values);
-              SetLength(FPTZNode.AuxiliaryCommands[Z].Values,LCountAux+1);
-              if LTmpStr.Contains('|') then            
-                FPTZNode.AuxiliaryCommands[Z].Values[LCountAux] := LTmpStrSplit.Split(['|'])[1]
-              else
-                FPTZNode.AuxiliaryCommands[Z].Values[LCountAux] := LTmpStrSplit;
-              Break;
-            end
-          end;
-          
-          if not LFoundAux then
-          begin
-            SetLength(FPTZNode.AuxiliaryCommands,LCountAux+1); 
-            FPTZNode.AuxiliaryCommands[LCountAux].Name := LTmpStrSplit;
-                         
-            SetLength(FPTZNode.AuxiliaryCommands[LCountAux].Values,1);        
-            if LTmpStr.Contains('|') then            
-              FPTZNode.AuxiliaryCommands[LCountAux].Values[0] :=  LTmpStr.Split(['|'])[1]              
-            else
-              FPTZNode.AuxiliaryCommands[LCountAux].Values[0]:= LTmpStr;        
-          end;
         end
+        else  
+          {$REGION 'Log'}
+          {TSI:IGNORE ON}
+              FONVIFManager.DoWriteLog('TONVIFPTZManager.GetNodes',Format('Unsupported node name [%s]',[LNodesList.ChildNodes[X].DOMNode.localName]),tpLivWarning);      
+          {TSI:IGNORE OFF}
+          {$ENDREGION}                                                
+      end;
+      FPTZNode.MaximumNumberOfPresets := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'MaximumNumberOfPresets'),-1);  
+      FPTZNode.HomeSupported          := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'HomeSupported'),False); 
+      LTmpStr                         := LNodes.ChildNodes[i].DOMNode.localName;
+
+      for X := 0 to LNodes.ChildNodes[i].ChildNodes.Count -1 do
+      begin  
+        if SameText(LNodes.ChildNodes[i].ChildNodes[X].DOMNode.localName,'AuxiliaryCommands') then
+        begin
+          LFoundAux    := False;        
+          LTmpStr      := LNodes.ChildNodes[i].ChildNodes[X].Text.Replace('tt:',String.Empty,[rfIgnoreCase]);
+          if not LTmpStr.Trim.IsEmpty then
+          begin
+            LTmpStrSplit := LTmpStr;
+            LCountAux    := Length(FPTZNode.AuxiliaryCommands);
+
+            if LTmpStr.Contains('|') then
+              LTmpStrSplit := LTmpStr.Split(['|'])[0];
+            
+            for Z := 0 to LCountAux -1 do
+            begin
+              if SameText(FPTZNode.AuxiliaryCommands[Z].Name,LTmpStrSplit) then
+              begin
+                LFoundAux      := True;
+                LCountAuxValue := Length(FPTZNode.AuxiliaryCommands[Z].Values);
+                SetLength(FPTZNode.AuxiliaryCommands[Z].Values,LCountAuxValue+1);
+                if LTmpStr.Contains('|') then            
+                  FPTZNode.AuxiliaryCommands[Z].Values[LCountAuxValue] := LTmpStr.Split(['|'])[1]
+                else
+                  FPTZNode.AuxiliaryCommands[Z].Values[LCountAuxValue] := LTmpStrSplit;
+                Break;
+              end
+            end;
+          
+            if not LFoundAux then
+            begin
+              SetLength(FPTZNode.AuxiliaryCommands,LCountAux+1); 
+              FPTZNode.AuxiliaryCommands[LCountAux].Name := LTmpStrSplit;
+                         
+              SetLength(FPTZNode.AuxiliaryCommands[LCountAux].Values,1);        
+              if LTmpStr.Contains('|') then            
+                FPTZNode.AuxiliaryCommands[LCountAux].Values[0] :=  LTmpStr.Split(['|'])[1]              
+              else
+                FPTZNode.AuxiliaryCommands[LCountAux].Values[0]:= LTmpStr;        
+            end;
+          end
+        end;
       end;
 
       LNodesList := TONVIFXMLUtils.RecursiveFindNode(LNodes.ChildNodes[I],'Extension');
       if Assigned(LNodesList) then
       begin
-        LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LNodes.ChildNodes[I],'SupportedPresetTour');      
+        LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LNodes.ChildNodes[I],'SupportedPresetTour'); 
+        for Z := 0 to LNodesList.ChildNodes.Count -1 do
+        begin
+          if not SameText(LNodesList.ChildNodes[Z].DOMNode.localName,'SupportedPresetTour') then
+            {$REGION 'Log'}
+            {TSI:IGNORE ON}
+                FONVIFManager.DoWriteLog('TONVIFPTZManager.GetCapabilities',Format('Unsupported node name [%s]',[LNodesList.ChildNodes[X].DOMNode.localName]),tpLivWarning);      
+            {TSI:IGNORE OFF}
+            {$ENDREGION}                                                
+        end;            
+             
         if Assigned(LNodeTmp) then
         begin
-          FPTZNode.Extension.SupportedPresetTour.MaximumNumberOfPresetTours := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'MaximumNumberOfPresetTours'),0);  
-          //TODO PTZPresetTourOperation 
-        end
-
+          FPTZNode.Extension.SupportedPresetTour.MaximumNumberOfPresetTours := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'MaximumNumberOfPresetTours'),-1);
+          
+          for X := 0 to LNodeTmp.ChildNodes.Count -1 do
+          begin
+            if SameText(LNodeTmp.ChildNodes[X].DOMNode.localName,'PTZPresetTourOperation') then
+            begin
+              LCountAux := Length(FPTZNode.Extension.SupportedPresetTour.PTZPresetTourOperation);
+              SetLength(FPTZNode.Extension.SupportedPresetTour.PTZPresetTourOperation,LCountAux+1);
+              FPTZNode.Extension.SupportedPresetTour.PTZPresetTourOperation[LCountAux] := LNodeTmp.ChildNodes[X].Text; 
+            end 
+            else if not SameText(LNodeTmp.ChildNodes[X].DOMNode.localName,'MaximumNumberOfPresetTours') then                 
+              {$REGION 'Log'}
+              {TSI:IGNORE ON}
+                  FONVIFManager.DoWriteLog('TONVIFPTZManager.GetCapabilities',Format('Unsupported node name [%s]',[LNodeTmp.ChildNodes[X].DOMNode.localName]),tpLivWarning);      
+              {TSI:IGNORE OFF}
+              {$ENDREGION}              
+          end
+        end;
       end            
     end;
       
     Result := True;     
-  end;
+  end
+  else
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFManager.GetNodes',Format('Url [%s] Error [%d] LastResponse [%s]',[FONVIFManager.FUrl,FONVIFManager.FLastStatusCode,FONVIFManager.FLastResponse]),tpLivError);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}        
+end;
+
+function TONVIFPTZManager.GetStatus: Boolean;
+var LResponseStr       : String;
+    LXMLDoc            : IXMLDocument;
+    LSoapBodyNode      : IXMLNode;
+    LPTZStatusNode     : IXMLNode;
+    LErrorFound        : Boolean;
+    I                  : Integer;
+begin
+  Result := False;  
+  ResetPTZStatus;
+  if not FONVIFManager.UrlIsValid('TONVIFPTZManager.GetStatus') then Exit; 
+  if not isValidToken('TONVIFPTZManager.GetStatus') then Exit;
+
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareGetStatus(FToken),LResponseStr);
+  if Result then
+  begin
+    Result := False;  
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFPTZManager.GetStatus',LResponseStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    LXMLDoc := TXMLDocument.Create(nil);
+    LXMLDoc.LoadFromXML(LResponseStr);
+
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+    
+    LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
+    LPTZStatusNode  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'PTZStatus');
+
+    for I := 0 to LPTZStatusNode.ChildNodes.Count -1 do
+    begin
+      if SameText(LPTZStatusNode.ChildNodes[I].DOMNode.localName,'Position') then
+      begin
+         FPTZStatus.PTZPosition.PanTilt.X := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(TONVIFXMLUtils.RecursiveFindNode(LPTZStatusNode.ChildNodes[I],'PanTilt'),'x'),-1);
+         FPTZStatus.PTZPosition.PanTilt.Y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(TONVIFXMLUtils.RecursiveFindNode(LPTZStatusNode.ChildNodes[I],'PanTilt'),'x'),-1);
+      end
+      else if SameText(LPTZStatusNode.ChildNodes[I].DOMNode.localName,'MoveStatus') then
+      begin
+         FPTZStatus.MoveStatus.PanTilt := TONVIFXMLUtils.GetChildNodeValue(LPTZStatusNode.ChildNodes[I],'PanTilt');
+         FPTZStatus.MoveStatus.Zoom    := TONVIFXMLUtils.GetChildNodeValue(LPTZStatusNode.ChildNodes[I],'Zoom');
+      end
+      else if SameText(LPTZStatusNode.ChildNodes[I].DOMNode.localName,'Error') then
+      begin
+        FPTZStatus.Error := LPTZStatusNode.ChildNodes[I].Text; 
+      end
+      else if SameText(LPTZStatusNode.ChildNodes[I].DOMNode.localName,'UtcTime') then
+      begin
+        if not LPTZStatusNode.ChildNodes[I].Text.Trim.IsEmpty then
+          FPTZStatus.UtcTime := XMLTimeToDateTime(LPTZStatusNode.ChildNodes[I].Text,True)
+      end
+      else
+        {$REGION 'Log'}
+        {TSI:IGNORE ON}
+            FONVIFManager.DoWriteLog('TONVIFPTZManager.GetStatus',Format('Unsupported node name [%s]',[LPTZStatusNode.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
+        {TSI:IGNORE OFF}
+        {$ENDREGION}                                                
+    end;      
+  end
+  else
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFManager.GetStatus',Format('Url [%s] Error [%d] LastResponse [%s]',[FONVIFManager.FUrl,FONVIFManager.FLastStatusCode,FONVIFManager.FLastResponse]),tpLivError);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}      
+  
 end;
 
 function TONVIFPTZManager.GotoHomePosition: Boolean;
@@ -1992,7 +2305,6 @@ begin
   Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareSetHomePosition(FToken),LResponseStr);
 end;
 
-
 function TONVIFPTZManager.GoToPreset(const aIndexPreset: Integer) : Boolean;
 var LResponseStr : String;
 begin
@@ -2006,7 +2318,7 @@ begin
     Exit;
   end;
 
-  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareGotoPreset(FToken,FPresentList[aIndexPreset].Token),LResponseStr);
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareGotoPreset(FToken,FPresentList[aIndexPreset]^.Token),LResponseStr);
 end;
 
 function TONVIFPTZManager.SetPreset(const aPresetName:String;var aNewIndexPreset:Integer;aIndexExistsPreset: Integer=-1):Boolean;
@@ -2016,6 +2328,7 @@ var LResponseStr       : String;
     LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LPresetSetResponse : IXMLNode;
+    LErrorFound        : Boolean;
 begin
   Result            := False;  
   aNewIndexPreset   := -1;
@@ -2028,7 +2341,7 @@ begin
     Exit;
   end;
 
-  LNewSetPresetToken := String.Empty;
+  LNewSetPresetToken := (FPresentList.Count +1).ToString;
   if aIndexExistsPreset > -1 then
   begin
     if not inRange(aIndexExistsPreset,0,FPresentList.Count -1) then
@@ -2036,6 +2349,8 @@ begin
       FONVIFManager.SetLastStatusCode('TONVIFPTZManager.SetPreset',ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX);
       Exit;
     end;
+
+    LNewSetPresetToken := FPresentList[aIndexExistsPreset].Token;
   end
   else if FPresentList.Count +1 > SupportedInfo.MaxPreset then
   begin    
@@ -2043,26 +2358,33 @@ begin
     Exit;
   end;    
 
-  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareSetPreset(FToken,LNewSetPresetToken,aPresetName),LResponseStr);
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareSetPreset(FToken,LNewSetPresetToken,aPresetName)  ,LResponseStr);
 
   if Result then
   begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+       FONVIFManager.DoWriteLog('TONVIFManager.SetPreset',LResponseStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}  
     if aIndexExistsPreset > -1 then
-      FPresentList[aIndexExistsPreset].Name := aPresetName
+      FPresentList[aIndexExistsPreset]^.Name := aPresetName
     else
     begin
+      Result := False;
       New(LPreset);
     
-      LPreset.Name  := aPresetName;
-      LXMLDoc := TXMLDocument.Create(nil);
+      LPreset^.Name  := aPresetName;
+      LXMLDoc        := TXMLDocument.Create(nil);
       LXMLDoc.LoadFromXML(LResponseStr);
 
-      if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+      if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
       LSoapBodyNode      := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
       LPresetSetResponse := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'SetPresetsResponse');      
-      LPreset.Token      := String(LPresetSetResponse.Attributes['token']);      
+      LPreset^.Token     := String(LPresetSetResponse.Attributes['token']);      
       aNewIndexPreset    := FPresentList.Add(LPreset);
+      Result             := True;      
     end;
   end;    
 end;
@@ -2070,7 +2392,21 @@ end;
 procedure TONVIFPTZManager.SetToken(const Value: String);
 begin
   if FToken <> value then
+  begin    
     FToken := Value;
+    if FToken.Trim.IsEmpty then
+    begin
+      ResetPTZNode;
+      ResetPTZStatus;
+      FPresentList.Clear;
+    end
+    else
+    begin
+      GetStatus;
+      GetNodes; 
+      FONVIFManager.SetTokenImagingByPTZToken 
+    end;
+  end;
 end;
 
 function TONVIFPTZManager.RemovePreset(const aIndexPreset: Integer): Boolean;
@@ -2090,6 +2426,17 @@ begin
 
   if Result then
     FPresentList.Delete(aIndexPreset);
+end;
+
+Procedure TONVIFPTZManager.ResetPTZStatus;
+begin
+   FPTZStatus.PTZPosition.PanTilt.X := -1;
+   FPTZStatus.PTZPosition.PanTilt.Y := -1;   
+   FPTZStatus.PTZPosition.Zoom      := -1;   
+   FPTZStatus.MoveStatus.PanTilt    := String.Empty;   
+   FPTZStatus.MoveStatus.Zoom       := String.Empty;   
+   FPTZStatus.Error                 := String.Empty;
+   FPTZStatus.UtcTime               := 0;
 end;
 
 procedure TONVIFPTZManager.ResetPTZNode;
@@ -2114,9 +2461,10 @@ end;
 { TONVIFImagingManager }
 constructor TONVIFImagingManager.Create(aONVIFManager: TONVIFManager);
 begin
-  FONVIFManager := aONVIFManager;
-  FToken        := String.Empty;
-  ResetImagingSettings;
+  FSupportedInfo := TSupportedImagingInfo.Create(self);
+  FONVIFManager  := aONVIFManager;
+  FToken         := String.Empty;
+  ResetImagingSettings;  
 end;
 
 function TONVIFImagingManager.GetCapabilities: Boolean;
@@ -2136,7 +2484,7 @@ begin
       FONVIFManager.DoWriteLog('TONVIFImagingManager.GetCapabilities',LResponseStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    //TODO Parser and structure
+    //TODO Parser
     FSupportImageStabilization                     := False;
     FSupportImagingPresets                         := False;    
   end;
@@ -2145,6 +2493,17 @@ end;
 
 procedure TONVIFImagingManager.ResetImagingSettings;
 begin
+  {Focus}
+  FFocusSettings.Options.Continuous.Speed.Min    := -1;
+  FFocusSettings.Options.Continuous.Speed.Max    := -1;
+  FFocusSettings.Options.Continuous.Supported    := False; 
+  FFocusSettings.Options.Relative.Speed.Min      := -1;
+  FFocusSettings.Options.Relative.Speed.Max      := -1;
+  FFocusSettings.Options.Relative.Supported      := False; 
+  FFocusSettings.Options.Absolute.Speed.Min      := -1;
+  FFocusSettings.Options.Absolute.Speed.Max      := -1;
+  FFocusSettings.Options.Absolute.Supported      := False; 
+
   FSupportImageStabilization                     := False;
   FSupportImagingPresets                         := False;
   FImagingSettings.BacklightCompensation         := False;
@@ -2172,6 +2531,124 @@ begin
  
 end;
 
+
+destructor TONVIFImagingManager.Destroy;
+begin
+  FreeAndNil(FSupportedInfo);
+  inherited;
+end;
+
+Function TONVIFImagingManager.GetMoveOptions:Boolean;
+var LResponseStr       : String;
+    LXMLDoc            : IXMLDocument;
+    LSoapBodyNode      : IXMLNode;
+    LMoveOptionNode    : IXMLNode;
+    LErrorFound        : Boolean;
+    LNodeSpeed         : IXMLNode;
+begin
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atImaging),FONVIFManager.FSOAPBuilder.PrepareImagingMoveOptions(FToken),LResponseStr);  
+  if Result then 
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFImagingManager.GetImagingSettings',LResponseStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    Result  := False;
+    LXMLDoc := TXMLDocument.Create(nil);
+    LXMLDoc.LoadFromXML(LResponseStr);
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+     
+    LSoapBodyNode    := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
+ 
+    LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Relative');
+    if Assigned(LMoveOptionNode) then
+    begin
+      //FFocusSettings.Options.Relative.Distance     
+      FFocusSettings.Options.Relative.Supported := True;
+      LNodeSpeed                                := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
+      if Assigned(LNodeSpeed) then
+      begin
+        FFocusSettings.Options.Relative.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Min'),-1);  
+        FFocusSettings.Options.Relative.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Max'),-1);
+      end;
+    end;
+
+    LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Absolute');
+    if Assigned(LMoveOptionNode) then
+    begin
+      //TODO FFocusSettings.Options.Absolute.Position 
+      FFocusSettings.Options.Absolute.Supported := True;
+      LNodeSpeed                                := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
+      if Assigned(LNodeSpeed) then
+      begin
+        FFocusSettings.Options.Absolute.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Min'),-1);  
+        FFocusSettings.Options.Absolute.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Max'),-1);
+      end;
+    end;
+
+    LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Continuous');
+    if Assigned(LMoveOptionNode) then
+    begin
+      FFocusSettings.Options.Continuous.Supported := True;
+      LNodeSpeed                                  := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
+      if Assigned(LNodeSpeed) then
+      begin
+        FFocusSettings.Options.Continuous.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Min'),-1);  
+        FFocusSettings.Options.Continuous.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Max'),-1);
+      end;
+    end;
+    Result := True;  
+  end;
+end;
+
+function TONVIFImagingManager.GetStatus: Boolean;
+var LResponseStr       : String;
+    LXMLDoc            : IXMLDocument;
+    LSoapBodyNode      : IXMLNode;
+    LGestStatus        : IXMLNode;
+    LErrorFound        : Boolean;
+    I                  : Integer;
+begin
+  Result := False;  
+  
+  Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atPTZ),FONVIFManager.FSOAPBuilder.PrepareImagingGetStatus(FToken),LResponseStr);
+  if Result then
+  begin
+    Result := False;  
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',LResponseStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    LXMLDoc := TXMLDocument.Create(nil);
+    LXMLDoc.LoadFromXML(LResponseStr);
+
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+    
+    LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
+    Exit;
+    LGestStatus  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetStatusResponse');
+
+    for I := 0 to LGestStatus.ChildNodes.Count -1 do
+    begin
+        {$REGION 'Log'}
+        {TSI:IGNORE ON}
+            FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',Format('Unsupported node name [%s]',[LGestStatus.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
+        {TSI:IGNORE OFF}
+        {$ENDREGION}
+    end;      
+  end
+  else
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',Format('Url [%s] Error [%d] LastResponse [%s]',[FONVIFManager.FUrl,FONVIFManager.FLastStatusCode,FONVIFManager.FLastResponse]),tpLivError);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}      
+  
+end;
+
+
 function TONVIFImagingManager.GetImagingSettings: Boolean;
 var LResponseStr       : String;
     LXMLDoc            : IXMLDocument;
@@ -2180,6 +2657,8 @@ var LResponseStr       : String;
     LNodeTmp1          : IXMLNode;
     LNodeTmp2          : IXMLNode;   
     LTmpStrValue       : String; 
+    LErrorFound        : Boolean;
+    I                  : Integer;
 begin
   Result := False;  
 
@@ -2187,7 +2666,13 @@ begin
   if not FONVIFManager.UrlIsValid('TONVIFImagingManager.GetImagingSettings') then Exit; 
   if not isValidToken('TONVIFImagingManager.GetImagingSettings') then Exit;
 
-  GetCapabilities;
+  if not GetCapabilities then exit;
+
+  if GetMoveOptions then
+  begin
+    if SupportedInfo.FocusSupported then
+      GetStatus;
+  end;
 
   Result := FONVIFManager.ExecuteRequest(FONVIFManager.GetUrlByType(atImaging),FONVIFManager.FSOAPBuilder.PrepareGetImagingSettings(FToken),LResponseStr);
 
@@ -2202,7 +2687,7 @@ begin
     LXMLDoc := TXMLDocument.Create(nil);
     LXMLDoc.LoadFromXML(LResponseStr);
 
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement) then exit;
+    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
     LSoapBodyNode    := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LImgSettingsNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'ImagingSettings');
@@ -2226,9 +2711,8 @@ begin
         FImagingSettings.Exposure.MaxIris         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MaxIris'),-1);      
         FImagingSettings.Exposure.MinGain         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MinGain'),-1);      
         FImagingSettings.Exposure.MaxGain         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MaxGain'),-1);      
-        FImagingSettings.Exposure.Iris            := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Gain'),-1);      
+        FImagingSettings.Exposure.Iris            := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Iris'),-1);      
         FImagingSettings.Exposure.Gain            := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Gain'),-1);      
-
       end;
       
       LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode,'Focus');
@@ -2270,16 +2754,27 @@ begin
       LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode,'Extension',True);
       if Assigned(LNodeTmp1) then      
       begin
+        for I := 0 to LNodeTmp1.ChildNodes.Count -1 do
+        begin
+          if not SameText(LNodeTmp1.ChildNodes[I].DOMNode.localName,'Defogging') and 
+             not SameText(LNodeTmp1.ChildNodes[I].DOMNode.localName,'NoiseReduction') 
+          then
+            {$REGION 'Log'}
+            {TSI:IGNORE ON}
+                FONVIFManager.DoWriteLog('TONVIFImagingManager.GetImagingSettings',Format('Unsupported node name [%s]',[LNodeTmp1.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
+            {TSI:IGNORE OFF}
+            {$ENDREGION}                                                
+        end;          
         LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Defogging');
         if Assigned(LNodeTmp2) then
         begin
           FImagingSettings.Extension.Defogging.Mode  := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Mode');        
           FImagingSettings.Extension.Defogging.Level := StrToFloatLocale( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Level'),-1);                  
         end;
+
         LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'NoiseReduction');
         if Assigned(LNodeTmp2) then
           FImagingSettings.Extension.NoiseReduction.Level := StrToFloatLocale( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Level'),-1);                  
-
       end;
     end;
 
@@ -2298,17 +2793,17 @@ begin
   Result := True;  
 end;
 
-procedure TONVIFImagingManager.SetToken(const Value: String);
+procedure TONVIFImagingManager.SetToken(const aValue: String);
 begin
-  if FToken <> value then
+  if FToken <> aValue then
   begin
-    FToken := Value.Trim;
+    FToken := aValue.Trim;
     {$REGION 'Log'}
     {TSI:IGNORE ON}
         FONVIFManager.DoWriteLog('TONVIFImagingManager.SetToken',Format('Imaging Token  [%s]',[Token]),tpLivInfo,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}  
-    if Value.Trim.IsEmpty then
+    if aValue.Trim.IsEmpty then
       ResetImagingSettings
     else
       GetImagingSettings; 
@@ -2316,36 +2811,51 @@ begin
 end;
 
 { TSupportedInfo }
-constructor TSupportedInfo.Create(aOwnerPTZManager: TONVIFPTZManager);
+constructor TSupportedPTZInfo.Create(aOwnerPTZManager: TONVIFPTZManager);
 begin
   FOwnerPTZManager := aOwnerPTZManager;
 end;
 
-function TSupportedInfo.GetMaxPreset: Integer;
+function TSupportedPTZInfo.GetMaxPreset: Integer;
 begin
   Result := FOwnerPTZManager.FPTZNode.MaximumNumberOfPresets;
 end;
 
-function TSupportedInfo.GetSupportedAbsoluteMode: Boolean;
+function TSupportedPTZInfo.GetSupportedAbsoluteMode: Boolean;
 begin
    Result := Length(FOwnerPTZManager.FPTZNode.SupportedPTZSpaces.AbsolutePanTiltPositionSpace) >0;
 end;
 
-function TSupportedInfo.GetSupportedContinuousMode: Boolean;
+function TSupportedPTZInfo.GetSupportedContinuousMode: Boolean;
 begin
   Result := Length(FOwnerPTZManager.FPTZNode.SupportedPTZSpaces.ContinuousPanTiltVelocitySpace) >0;
 end;
 
-function TSupportedInfo.GetSupportedHome: Boolean;
+function TSupportedPTZInfo.GetSupportedHome: Boolean;
 begin
   Result := FOwnerPTZManager.FPTZNode.HomeSupported
 end;
 
-function TSupportedInfo.GetSupportedRelativeModeMode: Boolean;
+function TSupportedPTZInfo.GetSupportedRelativeModeMode: Boolean;
 begin
   Result := Length(FOwnerPTZManager.FPTZNode.SupportedPTZSpaces.RelativePanTiltTranslationSpace) >0;
 end;
 
+
+{ TSupportedImagingInfo }
+
+constructor TSupportedImagingInfo.Create(aOwnerImagingManager: TONVIFImagingManager);
+begin
+  FOwnerImagingManager := aOwnerImagingManager;
+end;
+
+function TSupportedImagingInfo.GetFocusSupported: Boolean;
+begin
+ Result := FOwnerImagingManager.FFocusSettings.Options.Relative.Supported or 
+           FOwnerImagingManager.FFocusSettings.Options.Absolute.Supported or
+           FOwnerImagingManager.FFocusSettings.Options.Continuous.Supported;
+             
+end;
 
 end.
 

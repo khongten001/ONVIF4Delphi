@@ -100,7 +100,40 @@ Type
      Gain            : Double;
      Iris            : Double
   end;
+                               
+  
+  TContinuousFocusOptions = Record
+    Speed    : TMinMaxValue;
+    Supported: Boolean;
+  End;
 
+  TAbsoluteFocusOptions = Record
+    Speed    : TMinMaxValue;
+    Position : TMinMaxValue;    
+    Supported: Boolean;
+  End;
+
+  TRelativeFocusOptions = Record
+    Speed    : TMinMaxValue;
+    Distance : TMinMaxValue;
+    Supported: Boolean;
+  End;  
+
+  TFocusOptions = record
+    Relative   : TRelativeFocusOptions;
+    Continuous : TContinuousFocusOptions;
+    Absolute   : TAbsoluteFocusOptions;
+  end;
+
+  TFocusStatus = Record
+    AM_TODO : String;
+  End;
+
+  TImagingFocusSettings = record
+    Options : TFocusOptions;
+    Status  : TFocusStatus;
+  end;
+  
   TImagingFocus = record
     AutoFocusMode : TImagingFocusMode;
     DefaultSpeed  : Integer;

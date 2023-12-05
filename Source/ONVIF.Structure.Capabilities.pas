@@ -206,15 +206,24 @@ interface
   end;
 
   /// <summary>
-  ///   Represents ONVIF replay extension information.
+  ///   Represents ONVIF extension information XAddr.
   /// </summary>
   /// <record name="TReplayExtensionONVIF">
   ///   <field name="XAddr" type="String">
   ///     The XAddr (service endpoint) for ONVIF replay extension.
   ///   </field>
   /// </record>  
-  TReplayExtensionONVIF = record
+  TXAddrExtensionONVIF = record
     XAddr : String;
+  end;
+
+  TRecordingExtensionONVIF = record
+    XAddr              : String;
+    ReceiverSource     : Boolean;
+    MediaProfileSource : Boolean;
+    DynamicRecordings  : Boolean;
+    DynamicTracks      : Boolean;
+    MaxStringLength    : Integer;
   end;
 
   /// <summary>
@@ -227,11 +236,21 @@ interface
   ///   <field name="Replay" type="TReplayExtensionONVIF">
   ///     ONVIF replay extension information.
   ///   </field>
-  /// </record>  
+  /// </record>
+
   TExtensionONVIF = Record
-     Search  : TSearchExtensionONVIF;
-     Replay  : TReplayExtensionONVIF
+     Search         : TSearchExtensionONVIF;
+     Replay         : TXAddrExtensionONVIF;
+     DeviceIO       : TXAddrExtensionONVIF;
+     VideoSources   : Integer;
+     VideoOutputs   : Integer;
+     AudioSources   : Integer;
+     AudioOutputs   : Integer; 
+     RelayOutputs   : integer; 
+     Recording      : TRecordingExtensionONVIF;     
   end;
+
+  
   
   /// <summary>
   ///   Represents ONVIF capabilities information.

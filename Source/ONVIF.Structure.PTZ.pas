@@ -126,6 +126,36 @@ Type
 
   PTPTZPreset = ^TPTZPreset;
   
+  TPTZModeStatus = Record
+    PanTilt : String;
+    Zoom    : String;
+  End;
+  
+  /// <summary>
+  ///	<tptz:PTZStatus>
+  ///		<tt:Position>
+  ///			<tt:PanTilt x="0.000000"
+  ///			            y="0.636364"
+  ///			            space="http://www.onvif.org/ver10/tptz/PanTiltSpaces/PositionGenericSpace"/>
+  ///			<tt:Zoom x="0.000000"
+  ///			         space="http://www.onvif.org/ver10/tptz/ZoomSpaces/PositionGenericSpace"/>
+  ///		</tt:Position>
+  ///		<tt:MoveStatus>
+  ///			<tt:PanTilt>IDLE</tt:PanTilt>
+  ///			<tt:Zoom>IDLE</tt:Zoom>
+  ///		</tt:MoveStatus>
+  ///		<tt:Error>NO error</tt:Error>
+  ///		<tt:UtcTime>2023-12-03T23:46:30Z</tt:UtcTime>
+  ///	</tptz:PTZStatus>
+  /// </summary>  
+  TPTZStatus = Record
+    PTZPosition : TPTZPosition;
+    MoveStatus  : TPTZModeStatus;
+    Error       : String;
+    UtcTime     : TDateTime;
+  End;
+  
+  
   TPTZPresetList = Class(TList<PTPTZPreset>)
   private
     procedure DoItemRemoved(Sender: TObject; const Item: PTPTZPreset;Action: TCollectionNotification);
@@ -144,7 +174,8 @@ implementation
 
 procedure TPTZPresetList.DoItemRemoved(Sender: TObject; const Item: PTPTZPreset; Action: TCollectionNotification);
 begin
-  Dispose(item)
+  if Action in [cnDeleting, cnRemoved] then  
+    Dispose(item)
 end;
 
 

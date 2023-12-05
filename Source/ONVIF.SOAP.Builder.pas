@@ -88,7 +88,7 @@ Type
     /// <returns>
     ///   A string containing the details of the SOAP connection in XML format.
     /// </returns>    
-    function GetSoapXMLConnection:String;              
+    function GetSoapXMLConnection:String;
   public
      constructor Create(const aLogin, aPassword:String);
 
@@ -99,6 +99,22 @@ Type
     ///   The prepared GetCapabilities request string.
     /// </returns>
     function PrepareGetCapabilitiesRequest: String;
+
+    /// <summary>
+    ///   Prepares a GetMoveOptions request for ONVIF communication.
+    /// </summary>
+    /// <returns>
+    ///   The prepared GetCapabilities request string.
+    /// </returns>
+    function PrepareImagingMoveOptions(const aToken: String): String;
+    
+    /// <summary>
+    ///   Prepares a GetStatus request for ONVIF communication.
+    /// </summary>
+    /// <returns>
+    ///   The prepared GetCapabilities request string.
+    /// </returns>
+    function PrepareImagingGetStatus(const aToken: String): String;
       
     /// <summary>
     ///   Prepares an ONVIF Imaginig setttings  request based on the specified command.
@@ -138,6 +154,20 @@ Type
     function PrepareStartMoveContinuousRequest(const aToken,aDirection: String): String; 
 
     /// <summary>
+    ///   Prepares an ONVIF PTZ (Pan-Tilt) start move request based on the specified command.
+    /// </summary>
+    /// <param name="aToken">
+    ///   Token for authetication 
+    /// </param>
+    /// <param name="aCommand">
+    ///   The command to be included in the PTZ start move request.
+    /// </param>
+    /// <returns>
+    ///   An XML-formatted string representing the PTZ start move request.
+    /// </returns>    
+    function PrepareStartMoveRelativeRequest(const aToken,aDirection: String): String;              
+    
+    /// <summary>
     ///   Prepares the ONVIF PTZ command for retrieving the list of preset positions.
     /// </summary>
     /// <param name="aToken">
@@ -164,7 +194,16 @@ Type
     /// </param>
     /// <param name="aTokenPreset">Token of preset.</param>
     /// <returns>ONVIF PTZ command string for removing the specified preset position.</returns>    
-    function PrepareRemovePreset(const aToken,aTokenPreset: String): String;     
+    function PrepareRemovePreset(const aToken,aTokenPreset: String): String; 
+    
+    /// <summary>
+    ///   Prepares the ONVIF PTZ command for get status of device
+    /// </summary>
+    /// <param name="aToken">
+    ///   Token for authetication 
+    /// </param>
+    /// <returns> An XML-formatted string representing the PTZ GetStatus request.</returns> 
+    function PrepareGetStatus(const aToken:String):String;    
 
     /// <summary>
     ///   Prepares an ONVIF PTZ stop move request.
@@ -173,7 +212,7 @@ Type
     ///   Token for authetication 
     /// </param>
     /// <returns>
-    ///   An XML-formatted string representing the PTZ stop move request.
+    ///   An XML-formatted string representing the PTZ start zoom request.
     /// </returns>
     function PrepareStopMoveRequest(const aToken:String): String;
 
@@ -380,6 +419,18 @@ begin
 end;
 
 
+
+
+function TONVIFSOAPBuilder.PrepareImagingMoveOptions(const aToken:String): String;
+const GET_MOVE_OPTIONS  = '<timg:GetMoveOptions> '+
+                          '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
+                          '</timg:GetMoveOptions>'+
+                          '</soap:Body>'+
+                          '</soap:Envelope>';
+begin  
+  Result := GetSoapXMLConnection+ Format(GET_MOVE_OPTIONS,[aToken]);;
+end;
+
 function TONVIFSOAPBuilder.PrepareImagingCapabilities: String;
 const GET_CAPABILITIES  = '<timg:GetServiceCapabilities> '+
                           '</timg:GetServiceCapabilities>'+
@@ -387,7 +438,18 @@ const GET_CAPABILITIES  = '<timg:GetServiceCapabilities> '+
                           '</soap:Envelope>';
 begin  
   Result := GetSoapXMLConnection+ GET_CAPABILITIES;
+end;
 
+
+
+function TONVIFSOAPBuilder.PrepareImagingGetStatus(const aToken: String): String;
+const GET_SETTINGS  = '<timg:GetStatus> '+
+                      '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
+                      '</timg:GetStatus>'+
+                      '</soap:Body>'+
+                      '</soap:Envelope>';
+begin  
+  Result := GetSoapXMLConnection+ Format(GET_SETTINGS,[aToken]);
 end;
 
 function TONVIFSOAPBuilder.PrepareGetImagingSettings(const aToken:String): String;
@@ -401,6 +463,34 @@ begin
 end;
 
 {PTZ}
+
+Function TONVIFSOAPBuilder.PrepareStartMoveRelativeRequest(const aToken,aDirection: String): String;
+const CALL_PTZ_COMMAND ='<tptz:RelativeMove> '+
+                        '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                        '<tptz:Translation xsi:type="tt:PTZVector"> '+
+                        '<PanTilt xmlns="http://www.onvif.org/ver10/schema" %s'+
+                       // 'y="0" '+
+                       // 'x="-0.00999999978" '+
+                        'xsi:type="tt:Vector2D"/> '+
+                        'Zoom xmlns="http://www.onvif.org/ver10/schema" '+
+                        'x="0" '+
+                        'xsi:type="tt:Vector1D"/> '+
+                        '</tptz:Translation> '+
+                        '<tptz:Speed xsi:type="tt:PTZSpeed"> '+
+                        '<PanTilt xmlns="http://www.onvif.org/ver10/schema" '+
+                        'y="0.560000002" '+
+                        'x="0.560000002" '+
+                        'xsi:type="tt:Vector2D"/> '+
+                        '<Zoom xmlns="http://www.onvif.org/ver10/schema" '+
+                        'x="0.560000002" '+
+                        'xsi:type="tt:Vector1D"/> '+
+                        '</tptz:Speed> '+
+                        '</tptz:RelativeMove> '+
+                        '</soap:Body> '+
+                        '</soap:Envelope>';                         
+begin                                         
+    Result := GetSoapXMLConnection + Format(CALL_PTZ_COMMAND,[aToken,aDirection]);  
+end;
 
 function TONVIFSOAPBuilder.PrepareStartMoveContinuousRequest(const aToken,aDirection: String): String;
 const CALL_PTZ_COMMAND = 	'<tptz:ContinuousMove>'+
@@ -482,6 +572,17 @@ begin
   Result := GetSoapXMLConnection+ Format(SET_TO_HOME,[aToken]);
 end;
 
+function TONVIFSOAPBuilder.PrepareGetStatus(const aToken: String): String;
+const GET_STATUS  = '<tptz:GetStatus> '+        
+                      '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                      '</tptz:GetStatus>'+
+                      '</soap:Body>'+
+                      '</soap:Envelope>';
+begin  
+  Result := GetSoapXMLConnection+ Format(GET_STATUS,[aToken]);
+end;
+
+
 function TONVIFSOAPBuilder.PrepareGotoPreset(const aToken,aTokenPreset: String): String;
 const GO_TO_PRESET  = '<tptz:GotoPreset> '+
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
@@ -494,15 +595,15 @@ begin
 end;
 
 function TONVIFSOAPBuilder.PrepareSetPreset(const aToken,aTokenPreset,aPresetName: String): String;
-const SET_PRESET  = '<tptz:SetPreset> '+
+const SET_PRESET  = ' <tptz:SetPreset> '+
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                      '<tptz:PresetName>%s</tptz:PresetName> '+                      
                       '<tptz:PresetToken>%s</tptz:PresetToken> '+
-                      '<tptz:PresetName>%s</tptz:PresetToken> '+                      
                       '</tptz:SetPreset>'+
                       '</soap:Body>'+
                       '</soap:Envelope>';
 begin  
-  Result := GetSoapXMLConnection+ Format(SET_PRESET,[aToken,aTokenPreset,aPresetName]);
+  Result := GetSoapXMLConnection+ Format(SET_PRESET,[aToken,aPresetName,aTokenPreset]);
 end;
 
 function TONVIFSOAPBuilder.PrepareRemovePreset(const aToken,aTokenPreset: String): String;

@@ -41,6 +41,10 @@ type
     Button6: TButton;
     Button5: TButton;
     Button8: TButton;
+    pFocus: TPanel;
+    Button9: TButton;
+    Button10: TButton;
+    Label3: TLabel;
     procedure btnPTZPanRightMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure btnPTZTiltDownMouseDown(Sender: TObject; Button: TMouseButton;
@@ -65,6 +69,12 @@ type
     procedure FormCreate(Sender: TObject);
     procedure Button8Click(Sender: TObject);
     procedure Button5Click(Sender: TObject);
+    procedure Button10MouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure Button10MouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure Button9MouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
   private
     FONVIFManager: TONVIFManager;
     procedure BuildProfileTreeView(Node: TTreeNode; const Profile: TProfile);
@@ -122,13 +132,13 @@ end;
 procedure TForm1.btnPTZZoomInMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  FONVIFManager.PTZ.Zoom(True);
+  FONVIFManager.PTZ.Zoom(False);
 end;
 
 procedure TForm1.btnPTZZoomOutMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  FONVIFManager.PTZ.Zoom(False);
+  FONVIFManager.PTZ.Zoom(True);
 end;
 
 procedure TForm1.DoONProfileTokenFound(const aName, aToken : String;var aSetForDefault:Boolean);
@@ -174,6 +184,18 @@ begin
     ECurrentToken.Text := ListView1.Selected.SubItems[0];
 end;
 
+procedure TForm1.Button10MouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  FONVIFManager.Imaging.FocusMoveContinuous(True);
+end;
+
+procedure TForm1.Button10MouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  FONVIFManager.Imaging.FocusMoveStop;
+end;
+
 procedure TForm1.Button1Click(Sender: TObject);
 Var LRootNode  : TTreeNode; 
     LChildNode : TTreeNode;
@@ -199,7 +221,7 @@ begin
   Tv1.Items.BeginUpdate;
   tv1.Items.Clear;
   try
-    LRootNode := tv1.Items.Add(nil,FONVIFManager.Device.Manufacturer);
+    LRootNode  := tv1.Items.Add(nil,FONVIFManager.Device.Manufacturer);
     LChildNode := tv1.Items.AddChild(LRootNode,'DeviceInfo');
     tv1.Items.AddChild(LChildNode,Format('Model: %s',[FONVIFManager.Device.Model]));
     tv1.Items.AddChild(LChildNode,Format('FirmwareVersion: %s',[FONVIFManager.Device.FirmwareVersion]));
@@ -219,10 +241,10 @@ begin
     Tv1.Items.EndUpdate
   End;
   TabPTZ.Enabled := ListView1.Items.Count > 0;
+  pFocus.Enabled := FONVIFManager.Imaging.SupportedInfo.FocusSupported;
 end;
 
     
-
 procedure TForm1.Button2Click(Sender: TObject);
 begin
   if not Assigned(FONVIFManager) then Exit;
@@ -236,8 +258,7 @@ var LNewIp : String;
 begin
   LNewIp := '192.168.0.';
   if InputQuery('New ip','',LNewIP) then
-    EURL.Text := Format('onvif://%S:80/',[LNewIP]);
-  
+    EURL.Text := Format('onvif://%S:80/',[LNewIP]);  
 end;
 
 procedure TForm1.Button4Click(Sender: TObject);
@@ -280,13 +301,17 @@ begin
   FONVIFManager.PTZ.SetHomePosition;
 end;
 
+procedure TForm1.Button9MouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+ FONVIFManager.Imaging.FocusMoveContinuous(False);
+end;
 
 procedure TForm1.BuildImagingFocusOptionsTreeView(Node: TTreeNode;const aFocusOptions:TImagingFocusSettings );    
 var LContext: TRttiContext;
     LTypeObj: TRttiType;
     LField  : TRttiField;
-    LValue  : TValue; 
-    LIndex  : Integer;
+    LValue  : TValue;     
 begin
   Node := tv1.Items.AddChild(nil, 'FocusOptions');
 
@@ -310,7 +335,6 @@ var LContext: TRttiContext;
     LTypeObj: TRttiType;
     LField  : TRttiField;
     LValue  : TValue; 
-    LIndex  : Integer;
 begin
   Node := tv1.Items.AddChild(nil, 'ImaginingSettings');
 

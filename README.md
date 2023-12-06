@@ -49,6 +49,10 @@ with your actual credentials and ONVIF device URL.
 # Documentation
 comprehensive English documentation set is embedded directly in the source code in XML format, providing an easily accessible reference for developers
 
+You can find an executable in the Demo\Bin folder with the implemented functions ready for testing.
+![image](https://github.com/amancini/ONVIF_WDSL/assets/11525545/5d6bd4db-4d88-4b2d-b04d-9f372507bbdd)
+
+
 # Contributions
 Contributions are welcome! If you encounter any issues, have suggestions for improvements, or want to contribute new features, please check our Contribution Guidelines.
 

@@ -35,6 +35,10 @@ uses
   Soap.XSBuiltIns;
 
 Type
+
+
+  TOnAuxiliaryCommandFound = procedure (const aCommand:String;const aValues:TArray<String>) of object;
+  
   TONVIFPTZManager     = class;
   /// <summary>
   ///   Class representing supported PTZ (Pan-Tilt-Zoom) information.
@@ -70,7 +74,8 @@ Type
     /// <summary>
     ///   Function to check if relative mode is supported.
     /// </summary>    
-    function GetSupportedRelativeModeMode: Boolean;  
+    function GetSupportedRelativeModeMode: Boolean;
+    function GetAuxiliaryCommands: Boolean;
   public
     /// <summary>
     ///   Constructor for creating an instance of TSupportedPTZInfo.
@@ -80,27 +85,34 @@ Type
     /// <summary>
     ///   Property indicating whether home preset is supported.
     /// </summary>    
-    property Home           : Boolean read GetSupportedHome;
+    property Home               : Boolean read GetSupportedHome;
     
     /// <summary>
     ///   Property representing the maximum preset value.
     /// </summary>
-    property MaxPreset      : Integer read GetMaxPreset;
+    property MaxPreset          : Integer read GetMaxPreset;
     
     /// <summary>
     ///   Property indicating whether continuous mode is supported.
     /// </summary>
-    property ContinuousMode : Boolean read GetSupportedContinuousMode;        
+    property ContinuousMode     : Boolean read GetSupportedContinuousMode;        
 
     /// <summary>
     ///   Property indicating whether absolute mode is supported.
     /// </summary>    
-    property AbsoluteMode   : Boolean read GetSupportedAbsoluteMode;  
+    property AbsoluteMode       : Boolean read GetSupportedAbsoluteMode;  
 
     /// <summary>
     ///   Property indicating whether relative mode is supported.
     /// </summary>    
-    property RelativeMode   : Boolean read GetSupportedRelativeModeMode; 
+    property RelativeMode       : Boolean read GetSupportedRelativeModeMode; 
+
+    /// <summary>
+    ///   Property indicating whether AuxiliaryCommands is supported.
+    /// </summary>    
+    property AuxiliaryCommands  : Boolean read GetAuxiliaryCommands; 
+    
+    
   end;  
     
   /// https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v1706.pdf?441d4a&441d4a
@@ -155,12 +167,14 @@ Type
   /// </summary>
   TONVIFPTZManager = Class
   private
-    FONVIFManager  : IONVIFManager;
-    FPresentList   : TPTZPresetList;
-    FToken         : String;    
-    FPTZNode       : TPTZNode; 
-    FSupportedInfo : TSupportedPTZInfo;
-    FPTZStatus     : TPTZStatus;
+    FONVIFManager              : IONVIFManager;
+    FPresentList               : TPTZPresetList;
+    FToken                     : String;    
+    FPTZNode                   : TPTZNode; 
+    FSupportedInfo             : TSupportedPTZInfo;
+    FPTZStatus                 : TPTZStatus;
+    FOnGetPTZInfo              : TNotifyEvent;
+    FOnAuxiliaryCommandFound   : TOnAuxiliaryCommandFound;
 
     /// <summary>
     ///   Function to check the validity of a token for a given method name request.
@@ -422,16 +436,26 @@ Type
     ///   True if the PTZ move operation is successfully ; False otherwise.
     /// </returns>
     function SetHomePosition:Boolean;
-    
+
     /// <summary>
-    ///   Property providing access to PTZ (Pan-Tilt-Zoom) node settings.
+    /// Operation to send auxiliary commands to the PTZ device mapped by the PTZNode in the selected profile. 
+    /// The operation is supported if the AuxiliarySupported element of the PTZNode is true
     /// </summary>    
-    property PTZNode                 : TPTZNode            read FPTZNode;        
+    function SendAuxiliaryCommand(const aCommand,aParamValue:String):Boolean;
+     
     
     /// <summary>
     ///   Gets or sets the token of the ONVIF camera.
     /// </summary>    
-    property Token                   : String              read FToken                   write SetToken;    
+    property Token                   : String                    read FToken                   write SetToken;    
+
+    property OnGetPTZInfo            : TNotifyEvent              read FOnGetPTZInfo            write FOnGetPTZInfo;
+    property OnAuxiliaryCommandFound : TOnAuxiliaryCommandFound  read FOnAuxiliaryCommandFound write FOnAuxiliaryCommandFound;    
+    
+    /// <summary>
+    ///   Property providing access to PTZ (Pan-Tilt-Zoom) node settings.
+    /// </summary>    
+    property PTZNode                 : TPTZNode                  read FPTZNode;       
   End;
     
 
@@ -547,14 +571,12 @@ end;
 
 function TONVIFPTZManager.LoadPresetList : Boolean;
 var LResponseStr    : String;
-    LXMLDoc         : IXMLDocument;
     LSoapBodyNode   : IXMLNode;
     LPresetListNode : IXMLNode;
     LPtzPosNode     : IXMLNode;
     LPanTiltNode    : IXMLNode;    
     LPreset         : PTPTZPreset;
-    I               : Integer;
-    LErrorFound     : Boolean;
+    I               : Integer;    
 begin
   FPresentList.Clear;
   Result := False;
@@ -569,12 +591,9 @@ begin
         FONVIFManager.DoWriteLog('TONVIFPTZManager.LoadPresetList',LResponseStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResponseStr);
-
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
-    
-    LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);        
+    LSoapBodyNode := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;  
+         
     LPresetListNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetPresetsResponse');  
 
     for I := 0 to LPresetListNode.ChildNodes.Count -1 do
@@ -606,7 +625,6 @@ end;
 
 function TONVIFPTZManager.GetNodes: Boolean;
 var LResponseStr   : String;
-    LXMLDoc        : IXMLDocument;
     LSoapBodyNode  : IXMLNode;
     LNodes         : IXMLNode;
     LNodesList     : IXMLNode;
@@ -675,13 +693,10 @@ begin
         FONVIFManager.DoWriteLog('TONVIFPTZManager.GetNodes',LResponseStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResponseStr);
-
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+    LSoapBodyNode := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;
     
-    LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
-    LNodes          := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetNodesResponse');
+    LNodes  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetNodesResponse');
     if not Assigned(LNodes) then Exit;
 
     for I := 0 to LNodes.ChildNodes.Count -1 do
@@ -746,7 +761,7 @@ begin
       FPTZNode.MaximumNumberOfPresets := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'MaximumNumberOfPresets'),-1);  
       FPTZNode.HomeSupported          := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'HomeSupported'),False); 
       LTmpStr                         := LNodes.ChildNodes[i].DOMNode.localName;
-
+      LCountAux                       := 0;
       for X := 0 to LNodes.ChildNodes[i].ChildNodes.Count -1 do
       begin  
         if SameText(LNodes.ChildNodes[i].ChildNodes[X].DOMNode.localName,'AuxiliaryCommands') then
@@ -778,6 +793,9 @@ begin
           
             if not LFoundAux then
             begin
+              if (LCountAux > 0) and Assigned(FOnAuxiliaryCommandFound) then
+                FOnAuxiliaryCommandFound(FPTZNode.AuxiliaryCommands[LCountAux].Name,FPTZNode.AuxiliaryCommands[LCountAux].Values);
+              
               SetLength(FPTZNode.AuxiliaryCommands,LCountAux+1); 
               FPTZNode.AuxiliaryCommands[LCountAux].Name := LTmpStrSplit;
                          
@@ -790,6 +808,9 @@ begin
           end
         end;
       end;
+      if (LCountAux > 0) and Assigned(FOnAuxiliaryCommandFound) then
+        FOnAuxiliaryCommandFound(FPTZNode.AuxiliaryCommands[LCountAux-1].Name,FPTZNode.AuxiliaryCommands[LCountAux-1].Values); 
+     
 
       LNodesList := TONVIFXMLUtils.RecursiveFindNode(LNodes.ChildNodes[I],'Extension');
       if Assigned(LNodesList) then
@@ -840,10 +861,8 @@ end;
 
 function TONVIFPTZManager.GetStatus: Boolean;
 var LResponseStr       : String;
-    LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LPTZStatusNode     : IXMLNode;
-    LErrorFound        : Boolean;
     I                  : Integer;
 begin
   Result := False;  
@@ -859,12 +878,9 @@ begin
         FONVIFManager.DoWriteLog('TONVIFPTZManager.GetStatus',LResponseStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResponseStr);
-
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+    LSoapBodyNode := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;
     
-    LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LPTZStatusNode  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'PTZStatus');
 
     for I := 0 to LPTZStatusNode.ChildNodes.Count -1 do
@@ -919,6 +935,61 @@ begin
   Result := FONVIFManager.ExecuteRequest(atPTz,'TONVIFPTZManager.GotoHomePosition',FONVIFManager.GetSOAPBuilder.PrepareGotoHome(FToken),LResponseStr);
 end;
 
+function TONVIFPTZManager.SendAuxiliaryCommand(const aCommand,aParamValue: String): Boolean;
+var I              : Integer;
+    X              : Integer;
+    LAuxFound      : Boolean;
+    LAuxValueFound : Boolean;
+    LResponseStr   : String;
+    LAuxCommmand   : String;
+begin
+  Result          := False;
+  LAuxFound       := False;
+  LAuxValueFound  := False;
+
+  if not isValidToken('TONVIFPTZManager.SendAuxiliaryCommand') then Exit;
+  
+  if not FSupportedInfo.AuxiliaryCommands then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.SendAuxiliaryCommand',ONVIF_ERROR_PTZ_AUX_COMMAND_NOT_SUPPORTED);   
+    Exit;
+  end;  
+  
+  for I := 0 to Length(FPTZNode.AuxiliaryCommands)-1 do
+  begin
+    if SameText(FPTZNode.AuxiliaryCommands[I].Name,aCommand) then
+    begin
+      LAuxFound    := True;
+      LAuxCommmand := FPTZNode.AuxiliaryCommands[I].Name;
+      for X := 0 to Length(FPTZNode.AuxiliaryCommands[I].Values) do
+      begin
+        if SameText(FPTZNode.AuxiliaryCommands[I].Values[X],aParamValue) then 
+        begin
+          LAuxCommmand   := Format('%s|%s',[LAuxCommmand,FPTZNode.AuxiliaryCommands[I].Values[X]]);
+          LAuxValueFound := True;
+          Break;
+        end;
+      end;
+      Break;        
+    end;    
+  end;
+
+  if not LAuxFound then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.SendAuxiliaryCommand',ONVIF_ERROR_PTZ_AUX_COMMAND_NOT_FOUND);   
+    Exit;
+  end;
+
+  if not LAuxValueFound then
+  begin
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.SendAuxiliaryCommand',ONVIF_ERROR_PTZ_AUX_COMMAND_VALUE_NOT_FOUND);   
+    Exit;
+  end;  
+
+  Result := FONVIFManager.ExecuteRequest(atPTZ,'TONVIFPTZManager.SendAuxiliaryCommand',FONVIFManager.GetSOAPBuilder.PrepareSendAuxiliaryCommand(FToken,LAuxCommmand),LResponseStr);
+  
+end;
+
 function TONVIFPTZManager.SetHomePosition: Boolean;
 var LResponseStr : String;
 begin
@@ -952,10 +1023,8 @@ function TONVIFPTZManager.SetPreset(const aPresetName:String;var aNewIndexPreset
 var LResponseStr       : String;
     LNewSetPresetToken : String;
     LPreset            : PTPTZPreset;
-    LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LPresetSetResponse : IXMLNode;
-    LErrorFound        : Boolean;
 begin
   Result            := False;  
   aNewIndexPreset   := -1;
@@ -997,16 +1066,11 @@ begin
       FPresentList[aIndexExistsPreset]^.Name := aPresetName
     else
     begin
-      Result := False;
+      Result         := False;
+      LSoapBodyNode  := FONVIFManager.GetBodyNode(LResponseStr);
+      if not Assigned(LSoapBodyNode) then Exit;
       New(LPreset);
-    
-      LPreset^.Name  := aPresetName;
-      LXMLDoc        := TXMLDocument.Create(nil);
-      LXMLDoc.LoadFromXML(LResponseStr);
-
-      if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
-    
-      LSoapBodyNode      := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
+      LPreset^.Name      := aPresetName;
       LPresetSetResponse := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'SetPresetsResponse');      
       LPreset^.Token     := String(LPresetSetResponse.Attributes['token']);      
       aNewIndexPreset    := FPresentList.Add(LPreset);
@@ -1018,7 +1082,7 @@ end;
 procedure TONVIFPTZManager.SetToken(const Value: String);
 begin
   if FToken <> value then
-  begin    
+  begin
     FToken := Value;
     if FToken.Trim.IsEmpty then
     begin
@@ -1027,11 +1091,13 @@ begin
       FPresentList.Clear;
     end
     else
-    begin
+    begin      
       GetStatus;
       GetNodes; 
 //  TODO    GetConfigurationOptions;
-      FONVIFManager.SetTokenImagingByPTZToken 
+      FONVIFManager.SetTokenImagingByPTZToken; 
+      if Assigned(FOnGetPTZInfo) then      
+        FOnGetPTZInfo(Self); 
     end;
   end;
 end;
@@ -1044,7 +1110,7 @@ begin
   
   if not inRange(aIndexPreset,0,FPresentList.Count -1) then
   begin
-    FONVIFManager.SetLastStatusCode('',ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX);    
+    FONVIFManager.SetLastStatusCode('TONVIFPTZManager.RemovePreset',ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX);    
     Exit;
   end;
 
@@ -1088,6 +1154,11 @@ end;
 constructor TSupportedPTZInfo.Create(aOwnerPTZManager: TONVIFPTZManager);
 begin
   FOwnerPTZManager := aOwnerPTZManager;
+end;
+
+function TSupportedPTZInfo.GetAuxiliaryCommands: Boolean;
+begin
+  Result := Length(FOwnerPTZManager.FPTZNode.AuxiliaryCommands) > 0;
 end;
 
 function TSupportedPTZInfo.GetMaxPreset: Integer;

@@ -71,12 +71,14 @@ uses ONVIF.Types,ONVIF.SOAP.Builder,XmlDoc, XmlIntf, XMLDom;
     ///   Indicates whether the log entry is verbose. Default is False.
     /// </param>
     procedure DoWriteLog(const aFunction, aDescription: String;aLevel: TPONVIFLivLog; aIsVerboseLog: boolean=false);
+    
     function GetSpeed: Byte;
     procedure SetSpeed(const Value: Byte);
     function GetSOAPBuilder: TONVIFSOAPBuilder;
     procedure WriteLastErrorCodeLog(const aMethodName: String);
     procedure SetTokenImagingByPTZToken;
-    Function IsValidSoapXML(const aRootNode :IXMLNode;var aErrorFound:Boolean):Boolean;
+    function GetBodyNode(const aResponseText:String): IXMLNode;
+
     /// <summary>
     ///   Gets or sets the speed parameter for PTZ operations.
     /// </summary>

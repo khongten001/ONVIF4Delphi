@@ -31,7 +31,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.SyncObjs, System.Messaging,ONVIF.Intf,
-  ONVIF.SOAP.Builder, System.IOUtils,  Soap.XSBuiltIns,ONVIF.Imaging,
+  ONVIF.SOAP.Builder, System.IOUtils,  Soap.XSBuiltIns,ONVIF.Imaging,ActiveX,
   ONVIF.Constant.Error, ONVIF.Types, IdAuthenticationDigest, Winsock, XmlDoc,
   XmlIntf, XMLDom, System.Math, System.NetConsts, ONVIF.Structure.Device,ONVIF.PTZ,
   ONVIF.Structure.Profile, System.Net.HttpClient, System.net.UrlClient,
@@ -100,7 +100,7 @@ Type
   /// <summary>
   ///   Represents a manager class for handling ONVIF-related functionalities.
   /// </summary>  
-  TONVIFManager = class(TInterfacedObject,IONVIFManager)
+  TONVIFManager = class(TComponent,IONVIFManager)
   private
     FUrl                     : String;
     FLastResponse            : String;
@@ -119,7 +119,7 @@ Type
     {Event}
     FOnWriteLog              : TEventWriteLog;
     FOnReadInfoComplete      : TNotifyEvent; 
-    FOnPTZTokenFound     : TEventTokenFound;
+    FOnPTZTokenFound         : TEventTokenFound;
     FOnSourceiideoTokenFound : TEventTokenFound;
 
     function GetSOAPBuilder:TONVIFSOAPBuilder;
@@ -264,6 +264,7 @@ Type
     procedure SetTokenImagingByPTZToken;
     function GetSpeed: Byte;
     procedure SetSpeed(const Value: Byte);
+    function GetBodyNode(const aResponseText:String): IXMLNode;
   public
     /// <summary>
     ///   Initializes a new instance of the TONVIFManager class with the specified ONVIF service details.
@@ -277,7 +278,7 @@ Type
     /// <param name="aPassword">
     ///   The password credentials for the ONVIF service.
     /// </param>
-    constructor Create(const aUrl, aLogin, aPassword:String);overload;
+    constructor Create(const aUrl, aLogin, aPassword:String);reintroduce;overload;
   
     /// <summary>
     ///   Initializes a new instance of the IONVIFManager interface with the specified ONVIF service details.
@@ -294,7 +295,7 @@ Type
     /// <param name="aToken">
     ///   The security token for the ONVIF service.
     /// </param>
-    constructor Create(const aUrl, aLogin, aPassword, aToken: String);overload;
+    constructor Create(const aUrl, aLogin, aPassword, aToken: String);reintroduce;overload;
     
     /// <summary>
     ///   Destructor for the class instance.
@@ -482,6 +483,7 @@ end;
 
 constructor TONVIFManager.Create(const aUrl,aLogin,aPassword,aToken:String);
 begin
+  inherited Create(nil);
   FSOAPBuilder            := TONVIFSOAPBuilder.Create(aLogin,aPassword);
   FSaveResponseOnDisk     := False;
   FPathFileResponseOnDisk := 'DumpResponse.log';
@@ -498,7 +500,7 @@ begin
   FreeAndNil(FSOAPBuilder);
   FreeAndNil(FImaging);
   FreeAndNil(FPTZ);
-  inherited;
+  inherited Destroy;
 end;
 
 procedure TONVIFManager.DoWriteLog(const aFunction, aDescription: String;aLevel: TPONVIFLivLog; aIsVerboseLog: boolean=false);
@@ -511,11 +513,11 @@ procedure TONVIFManager.ReadInfo;
 begin
   {TODO get system date time to be use for password? }
   Try
-  if GetCapabilities then
-  begin
-    GetDeviceInformation;
-    GetProfiles;
-  end;
+    if GetCapabilities then
+    begin
+      GetDeviceInformation;
+      GetProfiles;
+    end;
   Finally
     TThread.Queue(nil, DoOnReadInfoCompleate);  
   End;  
@@ -533,7 +535,13 @@ begin
   LThread := TThread.CreateAnonymousThread(
     procedure
     begin
-      ReadInfo;
+      {MSXML uses COM objects, the error message means the MSXML COM objects failed to instantiate.}
+      CoInitialize(nil);
+      Try
+        ReadInfo;
+      Finally
+       CoUninitialize; 
+      End;
     end
   );
   LThread.Start;
@@ -625,7 +633,9 @@ begin
     ONVIF_ERROR_PTZ_MOVE_CONTINUOUS_NOT_SUPPORTED  : Result := 'Continuous mode not supported by camera';
     ONVIF_ERROR_PTZ_MOVE_ABSOLUTE_NOT_SUPPORTED    : Result := 'Absolute mode not supported by camera';
     ONVIF_ERROR_PTZ_MOVE_RELATIVE_NOT_SUPPORTED    : Result := 'Relativ mode not supported by camera';
-
+    ONVIF_ERROR_PTZ_AUX_COMMAND_NOT_SUPPORTED      : Result := 'Auxiliary command not supported by camera';
+    ONVIF_ERROR_PTZ_AUX_COMMAND_NOT_FOUND          : Result := 'Auxiliary command not found';
+    ONVIF_ERROR_PTZ_AUX_COMMAND_VALUE_NOT_FOUND    : Result := 'Auxiliary command value not found';
     {Imaging}
     ONVIF_ERROR_IMG_IMMAGING_IS_EMPTY              : Result := 'VideoSource token is empty';
     ONVIF_ERROR_IMG_FOCUS_NOT_SUPPORTED            : Result := 'Focus command is not supported by camera';
@@ -668,16 +678,26 @@ begin
   end;
 end;
 
+function TONVIFManager.GetBodyNode(const aResponseText: String): IXMLNode;
+var LXMLDoc       : IXMLDocument;
+    LErrorFound   : Boolean;
+begin
+  Result          := nil;
+  LXMLDoc         := TXMLDocument.Create(nil);
+  LXMLDoc.LoadFromXML(aResponseText);
+  LXMLDoc.Active := True;
+  if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+  Result := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);  
+end;
+
 function TONVIFManager.GetCapabilities: Boolean;
 var LResultStr         : String;
-    LXMLDoc            : IXMLDocument;
-    LSoapBodyNode      : IXMLNode;
     LCapabilitieNode   : IXMLNode;
     LNodeTmp1          : IXMLNode;
-    LNodeTmp2          : IXMLNode;    
+    LNodeTmp2          : IXMLNode;  
+    LBodyNode          : IXMLNode;  
     I                  : Integer;
     X                  : Integer;    
-    LErrorFound        : Boolean;
 begin
   Result := false;
 
@@ -691,13 +711,11 @@ begin
         DoWriteLog('TONVIFManager.GetCapabilities',LResultStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResultStr);
-
-    if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
     
-    LSoapBodyNode     := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
-    LCapabilitieNode  := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Device');
+    LBodyNode := GetBodyNode(LResultStr);
+    if not Assigned(LBodyNode) then Exit;
+    
+    LCapabilitieNode  := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Device');
 
     if Assigned(LCapabilitieNode) then
     begin
@@ -747,7 +765,7 @@ begin
       end;    
 
       {event}
-      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Events');
+      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Events');
 
       if Assigned(LCapabilitieNode) then
       begin
@@ -758,7 +776,7 @@ begin
       end;
 
       {Media}
-      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Media'); 
+      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Media'); 
       if Assigned(LCapabilitieNode) then
       begin            
         FCapabilities.Media.XAddr := TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'XAddr');
@@ -771,12 +789,12 @@ begin
         end;
       end;
       {PTZ}
-      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'PTZ'); 
+      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'PTZ'); 
       if Assigned(LCapabilitieNode) then      
         FCapabilities.PTZ.XAddr := TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'XAddr');
         
       {Extension}
-      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Extension',True); 
+      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Extension',True); 
 
       if Assigned(LCapabilitieNode) then
       begin       
@@ -849,8 +867,7 @@ end;
 
 function TONVIFManager.GetProfiles: Boolean;
 var LResultStr         : String;
-    LXMLDoc            : IXMLDocument;
-    LSoapBodyNode      : IXMLNode;
+    LBodyNode          : IXMLNode;
     LProfilesNode      : IXMLNode;
     LChildNodeRoot     : IXMLNode; 
     LChildNodeNode     : IXMLNode;
@@ -863,7 +880,6 @@ var LResultStr         : String;
     LSetVSourceToken   : Boolean; 
     LTokenPtzSetted    : Boolean; 
     LNewToken          : String;
-    LErrorFound        : Boolean;
 
     Procedure SetVideoSourceToken;
     begin
@@ -888,7 +904,7 @@ var LResultStr         : String;
     
 begin
   ResetProfiles;
-  Result := ExecuteRequest(atDeviceService,'TONVIFManager.GetProfiles',FSOAPBuilder.PrepareGetProfilesRequest, LResultStr);
+  Result := ExecuteRequest(atPtz,'TONVIFManager.GetProfiles',FSOAPBuilder.PrepareGetProfilesRequest, LResultStr);
 
   if Result then
   begin
@@ -898,13 +914,10 @@ begin
         DoWriteLog('TONVIFManager.GetProfiles',LResultStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}  
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResultStr);
-
-    if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
+    LBodyNode := GetBodyNode(LResultStr);
+    if not Assigned(LBodyNode) then Exit;
     
-    LSoapBodyNode := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
-    LProfilesNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'GetProfilesResponse');
+    LProfilesNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'GetProfilesResponse');
 
     if Assigned(LProfilesNode) then
     begin
@@ -929,8 +942,8 @@ begin
         begin
 
           LProfile.VideoSourceConfiguration.token       := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
-          if Assigned(FOnPTZTokenFound) then
-            FOnPTZTokenFound(LProfile.name,LProfile.VideoSourceConfiguration.token,LSetVSourceToken);
+          if Assigned(FOnSourceiideoTokenFound) then
+            FOnSourceiideoTokenFound(LProfile.name,LProfile.VideoSourceConfiguration.token,LSetVSourceToken);
           
           LProfile.VideoSourceConfiguration.name        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
           LProfile.VideoSourceConfiguration.UseCount    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
@@ -1124,14 +1137,12 @@ end;
 
 function TONVIFManager.GetDeviceInformation: Boolean;
 var LResultStr         : String;
-    LXMLDoc            : IXMLDocument;
-    LSoapBodyNode      : IXMLNode;
-    LErrorFound        : Boolean;
+    LBodyNode          : IXMLNode;
 
     Procedure SaveNodeInfo(const aNodeName:String;var aNodeResult:String);
     var LXMLNode    : IXMLNode;
     begin
-      LXMLNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,aNodeName);
+      LXMLNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,aNodeName);
 
       if Assigned(LXMLNode) then
         aNodeResult := LXMLNode.Text;    
@@ -1148,12 +1159,8 @@ begin
         DoWriteLog('TONVIFManager.GetDeviceInformation',LResultStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}  
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResultStr);
-
-    if not IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
-    
-    LSoapBodyNode := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
+    LBodyNode := GetBodyNode(LResultStr);
+    if not Assigned(LBodyNode) then Exit;
 
     {Init Device information record}
     SaveNodeInfo('Manufacturer',FDevice.Manufacturer);

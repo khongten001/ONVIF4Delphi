@@ -374,10 +374,8 @@ end;
 
 Function TONVIFImagingManager.GetMoveOptions:Boolean;
 var LResponseStr       : String;
-    LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LMoveOptionNode    : IXMLNode;
-    LErrorFound        : Boolean;
     LNodeSpeed         : IXMLNode;
 begin
   Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFImagingManager.GetImagingSettings',FONVIFManager.GetSOAPBuilder.PrepareImagingMoveOptions(FToken),LResponseStr);  
@@ -389,11 +387,8 @@ begin
     {TSI:IGNORE OFF}
     {$ENDREGION}
     Result  := False;
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResponseStr);
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
-     
-    LSoapBodyNode    := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
+    LSoapBodyNode  := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;
  
     LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Relative');
     if Assigned(LMoveOptionNode) then
@@ -438,10 +433,8 @@ end;
 
 function TONVIFImagingManager.GetStatus: Boolean;
 var LResponseStr       : String;
-    LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LGestStatus        : IXMLNode;
-    LErrorFound        : Boolean;  
     I                  : Integer;  
 begin
   Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFImagingManager.GetImagingSettings',FONVIFManager.GetSOAPBuilder.PrepareImagingGetStatus(FToken),LResponseStr);
@@ -453,12 +446,9 @@ begin
         FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',LResponseStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResponseStr);
+    LSoapBodyNode  := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;    
 
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
-    
-    LSoapBodyNode   := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LGestStatus     := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Position');
     if Assigned(LGestStatus) then
       LGestStatus := LGestStatus.ParentNode;
@@ -492,13 +482,11 @@ end;
 
 function TONVIFImagingManager.GetImagingSettings: Boolean;
 var LResponseStr       : String;
-    LXMLDoc            : IXMLDocument;
     LSoapBodyNode      : IXMLNode;
     LImgSettingsNode   : IXMLNode;
     LNodeTmp1          : IXMLNode;
     LNodeTmp2          : IXMLNode;   
     LTmpStrValue       : String; 
-    LErrorFound        : Boolean;
     I                  : Integer;
 begin
   Result := False;  
@@ -524,12 +512,9 @@ begin
     {TSI:IGNORE OFF}
     {$ENDREGION}
     Result  := False;
-    LXMLDoc := TXMLDocument.Create(nil);
-    LXMLDoc.LoadFromXML(LResponseStr);
+    LSoapBodyNode  := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;
 
-    if not FONVIFManager.IsValidSoapXML(LXMLDoc.DocumentElement,LErrorFound) then exit;
-    
-    LSoapBodyNode    := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);
     LImgSettingsNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'ImagingSettings');
 
     if Assigned(LImgSettingsNode) then

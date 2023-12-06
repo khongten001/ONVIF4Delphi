@@ -2,26 +2,15 @@ unit uMainForm;
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
-  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, ONVIF,
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,System.Generics.Collections,
+  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, ONVIF,ONVIF.Types,
   Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, ONVIF.Structure.Profile, TypInfo,ONVIF.Structure.PTZ,
   System.Rtti, ONVIF.Structure.Capabilities,System.IniFiles, ONVIF.Structure.Imaging; 
   
 type
+  TListArrStr = TArray<String>;
   TForm1 = class(TForm)
     tv1: TTreeView;
-    PageControl1: TPageControl;
-    TabSheet1: TTabSheet;
-    PageControl2: TPageControl;
-    TabPTZ: TTabSheet;
-    Label108: TLabel;
-    Label109: TLabel;
-    btnPTZTiltUp: TButton;
-    btnPTZPanLeft: TButton;
-    btnPTZPanRight: TButton;
-    btnPTZTiltDown: TButton;
-    btnPTZZoomOut: TButton;
-    btnPTZZoomIn: TButton;
     Panel1: TPanel;
     EUrl: TLabeledEdit;
     Button1: TButton;
@@ -31,20 +20,41 @@ type
     Memo1: TMemo;
     Panel2: TPanel;
     ListView1: TListView;
-    ECurrentToken: TEdit;
-    Label2: TLabel;
     Button3: TButton;
-    Button2: TButton;
-    Button7: TButton;
-    PnlPreset: TPanel;
-    Button4: TButton;
-    Button6: TButton;
-    Button5: TButton;
-    Button8: TButton;
+    pnlPTZ: TPanel;
+    Panel4: TPanel;
+    GridPanel1: TGridPanel;
+    Label4: TLabel;
+    Label2: TLabel;
+    ECurrentToken: TEdit;
+    Panel5: TPanel;
+    Label6: TLabel;
+    GridPanel2: TGridPanel;
+    Button12: TButton;
+    Button15: TButton;
+    BGoToHome: TButton;
+    Button18: TButton;
+    Button19: TButton;
+    btnPTZZoomOut: TButton;
+    btnPTZZoomIn: TButton;
     pFocus: TPanel;
-    Button9: TButton;
+    Label5: TLabel;
+    GridPanel3: TGridPanel;
     Button10: TButton;
+    Button9: TButton;
+    BSetHome: TButton;
+    Panel3: TPanel;
+    Label7: TLabel;
+    PnlPreset: TPanel;
+    BGotoPreset: TButton;
+    BRemovePreset: TButton;
+    BLoadPreset: TButton;
+    BAddPreset: TButton;
+    pnlAuxCmd: TPanel;
     Label3: TLabel;
+    cbAuxCmd: TComboBox;
+    cbAuxValue: TComboBox;
+    BSendAuxCmd: TButton;
     procedure btnPTZPanRightMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure btnPTZTiltDownMouseDown(Sender: TObject; Button: TMouseButton;
@@ -60,23 +70,27 @@ type
       Shift: TShiftState; X, Y: Integer);
     procedure btnPTZTiltUpMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
-    procedure Button2Click(Sender: TObject);
+    procedure BLoadPresetClick(Sender: TObject);
     procedure ListView1Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
-    procedure Button4Click(Sender: TObject);
-    procedure Button6Click(Sender: TObject);
-    procedure Button7Click(Sender: TObject);
+    procedure BGotoPresetClick(Sender: TObject);
+    procedure BRemovePresetClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
-    procedure Button8Click(Sender: TObject);
-    procedure Button5Click(Sender: TObject);
+    procedure BSetHomeClick(Sender: TObject);
+    procedure BAddPresetClick(Sender: TObject);
     procedure Button10MouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure Button10MouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure Button9MouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
+    procedure FormDestroy(Sender: TObject);
+    procedure cbAuxCmdSelect(Sender: TObject);
+    procedure BGoToHomeClick(Sender: TObject);
+    procedure BSendAuxCmdClick(Sender: TObject);
   private
-    FONVIFManager: TONVIFManager;
+    FONVIFManager : TONVIFManager;
+    FListAuxValue : TList<TListArrStr> ;
     procedure BuildProfileTreeView(Node: TTreeNode; const Profile: TProfile);
     procedure BuildRecordTreeView(Node: TTreeNode; const FieldName: string;const RecordValue: TValue);
     procedure BuildCapabilitiesTreeView(Node: TTreeNode;const aCapabilities: TCapabilitiesONVIF);
@@ -90,6 +104,10 @@ type
       aValue: TValue);
     procedure BuildImagingFocusOptionsTreeView(Node: TTreeNode;
       const aFocusOptions: TImagingFocusSettings);
+    procedure DoBuildTreeView(Sender: TObject);
+    procedure DoEnablePTZ(Sender: TObject);
+    procedure DoAuxiliaryCommandFound(const aCommand: String;
+      const aValues: TArray<String>);
   public
     { Public declarations }
   end;
@@ -132,13 +150,13 @@ end;
 procedure TForm1.btnPTZZoomInMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  FONVIFManager.PTZ.Zoom(False);
+  FONVIFManager.PTZ.Zoom(True);
 end;
 
 procedure TForm1.btnPTZZoomOutMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-  FONVIFManager.PTZ.Zoom(True);
+  FONVIFManager.PTZ.Zoom(False);
 end;
 
 procedure TForm1.DoONProfileTokenFound(const aName, aToken : String;var aSetForDefault:Boolean);
@@ -167,6 +185,7 @@ end;
 procedure TForm1.FormCreate(Sender: TObject);
 var LIniFile : TIniFile;
 begin
+  FListAuxValue := TList<TListArrStr>.Create;
   LIniFile := TIniFile.Create(ExtractFilePath(Application.ExeName)+ 'OnvifDemoConfig.ini');
   Try
      EUrl.Text  :=  LIniFile.ReadString('CONFIG','URL',String.Empty);
@@ -174,8 +193,12 @@ begin
      Epwd.Text  :=  LIniFile.ReadString('CONFIG','PWD',String.Empty);     
   finally
     FreeAndNil(LIniFile);
-  end
-  
+  end  
+end;
+
+procedure TForm1.FormDestroy(Sender: TObject);
+begin
+  FreeAndNil(FListAuxValue);
 end;
 
 procedure TForm1.ListView1Click(Sender: TObject);
@@ -196,27 +219,12 @@ begin
   FONVIFManager.Imaging.FocusMoveStop;
 end;
 
-procedure TForm1.Button1Click(Sender: TObject);
+procedure TForm1.DoBuildTreeView(Sender: TObject);
 Var LRootNode  : TTreeNode; 
     LChildNode : TTreeNode;
     I          : INteger;
 begin
-  Memo1.Lines.Clear;
-  if Assigned(FONVIFManager) then
-    FreeAndNil(FONVIFManager);
-  FONVIFManager                    := TONVIFManager.Create(EUrl.Text,EUser.Text,Epwd.Text); 
-  FONVIFManager.SaveResponseOnDisk := True;
-  FONVIFManager.OnWriteLog         := DoOnWriteLog;
-  FONVIFManager.OnPTZTokenFound    := DoONProfileTokenFound;
-  
-  ListView1.Items.BeginUpdate;
-  Try
-    ListView1.Clear;
-    FONVIFManager.ReadInfo;
-  Finally
-    ListView1.Items.EndUpdate;
-  End;
-  
+  ListView1.Items.EndUpdate;
   ECurrentToken.Text := FONVIFManager.PTZ.Token;
   Tv1.Items.BeginUpdate;
   tv1.Items.Clear;
@@ -240,12 +248,53 @@ begin
   Finally
     Tv1.Items.EndUpdate
   End;
-  TabPTZ.Enabled := ListView1.Items.Count > 0;
-  pFocus.Enabled := FONVIFManager.Imaging.SupportedInfo.FocusSupported;
+  {TODo event for load info imaginig}
+  pFocus.Enabled      := FONVIFManager.Imaging.SupportedInfo.FocusSupported;
+ 
+end;
+
+procedure TForm1.DoEnablePTZ(Sender: TObject);
+begin
+  pnlPTZ.Enabled      := ListView1.Items.Count > 0;
+
+  BGoToHome.Enabled   := FONVIFManager.PTZ.SupportedInfo.Home;
+  BSetHome.Enabled    := FONVIFManager.PTZ.SupportedInfo.Home; 
+  BAddPreset.Enabled  := FONVIFManager.PTZ.SupportedInfo.MaxPreset > 0;
+  BLoadPreset.Enabled := FONVIFManager.PTZ.SupportedInfo.MaxPreset > 0;
+  pnlAuxCmd.Enabled   := FONVIFManager.PTZ.SupportedInfo.AuxiliaryCommands;
+end;
+
+procedure TForm1.DoAuxiliaryCommandFound(const aCommand:String;const aValues:TArray<String>);
+var LIdxValue : Integer;
+begin
+  LIdxValue := FListAuxValue.Add(aValues);
+  
+  cbAuxCmd.Items.AddObject(aCommand,TObject(LIdxValue));  
+end;
+
+procedure TForm1.Button1Click(Sender: TObject);
+
+begin
+  Memo1.Lines.Clear;
+  if Assigned(FONVIFManager) then
+    FreeAndNil(FONVIFManager);
+  FONVIFManager                              := TONVIFManager.Create(EUrl.Text,EUser.Text,Epwd.Text); 
+  FONVIFManager.SaveResponseOnDisk           := True;
+  FONVIFManager.OnWriteLog                   := DoOnWriteLog;
+  FONVIFManager.OnPTZTokenFound              := DoONProfileTokenFound;  
+  FONVIFManager.OnReadInfoComplete           := DoBuildTreeView;
+  FONVIFManager.PTZ.OnGetPTZInfo             := DoEnablePTZ; 
+  FONVIFManager.PTZ.OnAuxiliaryCommandFound  := DoAuxiliaryCommandFound;
+  ListView1.Clear;
+  cbAuxCmd.Clear;
+  cbAuxValue.Clear;
+  ListView1.Items.BeginUpdate;
+  FListAuxValue.Clear;
+  FONVIFManager.ReadInfo;
 end;
 
     
-procedure TForm1.Button2Click(Sender: TObject);
+procedure TForm1.BLoadPresetClick(Sender: TObject);
 begin
   if not Assigned(FONVIFManager) then Exit;
    FONVIFManager.PTZ.LoadPresetList;
@@ -261,7 +310,7 @@ begin
     EURL.Text := Format('onvif://%S:80/',[LNewIP]);  
 end;
 
-procedure TForm1.Button4Click(Sender: TObject);
+procedure TForm1.BGotoPresetClick(Sender: TObject);
 var Lindex : String;
 begin
   if not Assigned(FONVIFManager) then Exit;
@@ -270,7 +319,7 @@ begin
     FONVIFManager.PTZ.GoToPreset(Lindex.ToInteger)
 end;
 
-procedure TForm1.Button5Click(Sender: TObject);
+procedure TForm1.BAddPresetClick(Sender: TObject);
 var LPresetName : String;
     LnewIndex   : Integer;
 begin
@@ -280,7 +329,7 @@ begin
     FONVIFManager.PTZ.SetPreset(LPresetName,LnewIndex,-1);  
 end;
 
-procedure TForm1.Button6Click(Sender: TObject);
+procedure TForm1.BRemovePresetClick(Sender: TObject);
 var Lindex : String;
 begin
   if not Assigned(FONVIFManager) then Exit;
@@ -289,13 +338,19 @@ begin
     FONVIFManager.PTZ.RemovePreset(Lindex.ToInteger)
 end;
 
-procedure TForm1.Button7Click(Sender: TObject);
-begin 
+procedure TForm1.BGoToHomeClick(Sender: TObject);
+begin
   if not Assigned(FONVIFManager) then Exit;
   FONVIFManager.PTZ.GotoHomePosition;
 end;
 
-procedure TForm1.Button8Click(Sender: TObject);
+procedure TForm1.BSendAuxCmdClick(Sender: TObject);
+begin
+  FONVIFManager.PTZ.SendAuxiliaryCommand(cbAuxCmd.Text,cbAuxValue.Text)
+  
+end;
+
+procedure TForm1.BSetHomeClick(Sender: TObject);
 begin
   if not Assigned(FONVIFManager) then Exit;
   FONVIFManager.PTZ.SetHomePosition;
@@ -307,7 +362,19 @@ begin
  FONVIFManager.Imaging.FocusMoveContinuous(False);
 end;
 
-procedure TForm1.BuildImagingFocusOptionsTreeView(Node: TTreeNode;const aFocusOptions:TImagingFocusSettings );    
+procedure TForm1.cbAuxCmdSelect(Sender: TObject);
+var i : integer;
+begin
+  cbAuxValue.Clear;
+  if cbAuxCmd.ItemIndex > -1 then
+  begin
+    for I := 0 to Length(FListAuxValue[Integer(cbAuxCmd.Items.Objects[cbAuxCmd.ItemIndex])]) -1 do
+      cbAuxValue.Items.Add((FListAuxValue[Integer(cbAuxCmd.Items.Objects[cbAuxCmd.ItemIndex])])[I]);
+  end;
+    
+end;
+
+procedure TForm1.BuildImagingFocusOptionsTreeView(Node: TTreeNode;const aFocusOptions:TImagingFocusSettings );
 var LContext: TRttiContext;
     LTypeObj: TRttiType;
     LField  : TRttiField;

@@ -28,8 +28,8 @@ You may use/change/modify the component under 1 conditions:
 unit ONVIF.XML.Utils;
 
 interface
-
-uses XmlDoc, XmlIntf, XMLDom,System.SysUtils; 
+                                       
+uses XmlDoc, XmlIntf, XMLDom,System.SysUtils,Variants; 
 
 
 Type
@@ -95,7 +95,7 @@ Type
     /// <param name="ANode">The XML node to start the search from.</param>
     /// <param name="aSearchNodeName">The name of the XML node to search for.</param>
     /// <returns>The found XML node or nil if not found.</returns>
-    class function RecursiveFindNode(ANode: IXMLNode; const aSearchNodeName: string;const aScanAllNode: Boolean=False): IXMLNode;static;    
+    class function RecursiveFindNode(const ANode: IXMLNode; const aSearchNodeName: string;const aScanAllNode: Boolean=False): IXMLNode;static;    
 
   end;
   
@@ -139,7 +139,7 @@ begin
   Result := aRootNode.ChildNodes[cNodeSOAPBody];  
 end;
 
-class function TONVIFXMLUtils.RecursiveFindNode(ANode: IXMLNode; const aSearchNodeName: string;const aScanAllNode: Boolean=False): IXMLNode;
+class function TONVIFXMLUtils.RecursiveFindNode(const ANode: IXMLNode; const aSearchNodeName: string;const aScanAllNode: Boolean=False): IXMLNode;
 var I       : Integer;
     LResult : IXMLNode;
 begin
@@ -147,10 +147,16 @@ begin
   LResult:= nil;         
   if not Assigned(ANode) then exit;
 
-  if CompareText(ANode.DOMNode.localName , aSearchNodeName) = 0 then
+  if ANode.DOMNode.nodeType = ELEMENT_NODE then
   begin
-    LResult := ANode;
-    if not aScanAllNode then Exit(LResult);
+    if (ANode.ChildNodes.Count > 0) or (not ANode.Text.IsEmpty) then
+    begin
+      if SameText(ANode.DOMNode.localName,aSearchNodeName) then
+      begin
+        LResult := ANode;
+        if not aScanAllNode then Exit(LResult);
+      end;
+    end;
   end;
 
   if Assigned(ANode.ChildNodes) then

@@ -292,6 +292,15 @@ Type
     ///   An XML-formatted string representing the PTZ SetPreset request.
     /// </returns>        
     function PrepareSetPreset(const aToken,aTokenPreset, aPresetName: String): String;
+
+    /// <summary>
+    ///   Prepares and returns an XML string representing a SendAuxiliaryCommand.
+    /// </summary>
+    /// <returns>
+    ///   A string containing the XML-formatted request for SendAuxiliaryCommand.
+    /// </returns>
+    
+    function PrepareSendAuxiliaryCommand(const aToken,aCommand: String): String;
             
     /// <summary>
     ///   Prepares and returns an XML string representing a request for device information.
@@ -317,6 +326,7 @@ implementation
 
 constructor TONVIFSOAPBuilder.Create(const aLogin,aPassword:String);
 begin
+  inherited create;
   FLogin     := aLogin;
   FPassword  := aPassword;
 end;
@@ -596,6 +606,16 @@ const GET_NODES  = '<tptz:GetNodes> '+
                     '</tptz:GetNodes>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ GET_NODES;
+end;
+
+function TONVIFSOAPBuilder.PrepareSendAuxiliaryCommand(const aToken, aCommand: String): String;
+const SET_AUX_COMMAND  = '<tptz:SendAuxiliaryCommand> '+        
+                         '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
+                         '<tptz:AuxiliaryData>tt:%s</tptz:AuxiliaryData> '+                         
+                         '</tptz:SendAuxiliaryCommand>'+ END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection+ Format(SET_AUX_COMMAND,[aToken,aCommand]);
+
 end;
 
 function TONVIFSOAPBuilder.PrepareSetHomePosition(const aToken:String): String;

@@ -56,6 +56,21 @@ comprehensive English documentation set is embedded directly in the source code 
 You can find an executable in the Demo\Bin folder with the implemented functions ready for testing.
 ![image](https://github.com/amancini/ONVIF_WDSL/assets/11525545/e3825f4c-7f43-4637-bf57-7e0dae7b48ff)
 
+# Camera Library Testing
+
+This repository contains the results of testing the library with various camera models. The library has been successfully tested with different cameras from various brands.
+
+## Test Results
+
+| CAMERA MODEL              | RESULT |
+|---------------------------|--------|
+| HIKVISION DS-2DF8442IXS   |   OK   |
+| PANASONIC IPRO WV-S6131   |   OK   |
+| AXIS v5915                |   OK   |
+| DAHUA DH-PTZ              |   OK   |
+| IPRO WV-U65302            |   OK   |
+
+
 
 # Contributions
 Contributions are welcome! If you encounter any issues, have suggestions for improvements, or want to contribute new features, please check our Contribution Guidelines.

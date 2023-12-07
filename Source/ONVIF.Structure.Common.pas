@@ -30,6 +30,7 @@ unit ONVIF.Structure.Common;
 interface
 
 type
+
   /// <summary>
   ///   Represents a simple item for ONVIF configuration.
   /// </summary>
@@ -122,6 +123,18 @@ type
     URI    : String;
     XRange : TMinMaxValue; 
   End;    
+
+  /// <summary>
+  /// Represents an auxiliary command with a name and an array of values.
+  /// </summary>
+  /// <remarks>
+  ///   This record is used to store information about auxiliary commands, where
+  ///   a command has a name associated with it, and it may have multiple values.
+  /// </remarks>
+  TAuxiliaryCommand = record
+    Name  : String;
+    Values: TArray<string>;
+  end;  
 
 implementation
 

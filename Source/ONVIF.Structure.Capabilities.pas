@@ -21,6 +21,8 @@ unit ONVIF.Structure.Capabilities;
 
 interface
 
+uses ONVIF.Structure.Common;
+
   Type
 
   /// <summary>
@@ -33,6 +35,8 @@ interface
   /// </record>  
   TExtensionNetworkONVIF = record
     Dot11Configuration : Boolean;
+    DHCPv6             : Boolean;
+    Dot1XConfigurations: Integer;
   end;
 
   /// <summary>
@@ -80,6 +84,31 @@ interface
   end;
 
   /// <summary>
+  /// Represents ONVIF system extension information.
+  /// </summary>
+  /// <record name="TExtensionSystem">
+  ///   <field name="HttpFirmwareUpgrade" type="Boolean">
+  ///     Indicates whether HTTP firmware upgrade is supported.
+  ///   </field>
+  ///   <field name="HttpSystemBackup" type="Boolean">
+  ///     Indicates whether HTTP system backup is supported.
+  ///   </field>
+  ///   <field name="HttpSystemLogging" type="Boolean">
+  ///     Indicates whether HTTP system logging is supported.
+  ///   </field>
+  ///   <field name="HttpSupportInformation" type="Boolean">
+  ///     Indicates whether HTTP support information is supported.
+  ///   </field>
+  /// </record>  
+  TExtensionSystem = record
+    HttpFirmwareUpgrade     : Boolean;
+    HttpSystemBackup        : Boolean;
+    HttpSystemLogging       : Boolean;
+    HttpSupportInformation  : Boolean;
+  end;
+  
+
+  /// <summary>
   ///   Represents system configuration settings in ONVIF.
   /// </summary>
   /// <record name="TSystemONVIF">
@@ -104,16 +133,52 @@ interface
   ///   <field name="SupportedVersions" type="TSupportedVersionsSytemONVIF">
   ///     Supported versions for system configuration.
   ///   </field>
+  ///   <field name="Extension" type="TExtensionSystem">
+  ///     ONVIF system extension information.
+  ///   </field>
   /// </record>  
   TSystemONVIF = Record
      DiscoveryResolve : Boolean;
      DiscoveryBye     : Boolean;
      RemoteDiscovery  : Boolean;
      SystemBackup     : Boolean;
-     SystemLogging    : Boolean;  
+     SystemLogging    : Boolean;
      FirmwareUpgrade  : Boolean;  
-     SupportedVersions: TSupportedVersionsSytemONVIF;             
+     SupportedVersions: TArray<TSupportedVersionsSytemONVIF>; 
+     Extension        : TExtensionSystem;            
   end;
+
+  /// <summary>
+  /// Represents an IO extension with an array of auxiliary commands.
+  /// </summary>
+  /// <record name="TExtensionIO">
+  ///   <field name="AuxiliaryCommands" type="TArray<TAuxiliaryCommand>">
+  ///     An array of auxiliary commands associated with the IO extension.
+  ///   </field>
+  /// </record>  
+  TExtensionIO = record
+    AuxiliaryCommands : TArray<TAuxiliaryCommand>;
+  end;
+  
+  /// <summary>
+  /// Represents ONVIF IO information, including the number of input connectors, relay outputs, and IO extensions.
+  /// </summary>
+  /// <record name="TIOOnvif">
+  ///   <field name="InputConnectors" type="Integer">
+  ///     The number of input connectors for ONVIF IO.
+  ///   </field>
+  ///   <field name="RelayOutputs" type="Integer">
+  ///     The number of relay outputs for ONVIF IO.
+  ///   </field>
+  ///   <field name="Extension" type="TExtensionIO">
+  ///     IO extension information, including an array of auxiliary commands.
+  ///   </field>
+  /// </record>  
+  TIOOnvif = record
+    InputConnectors : Integer;
+    RelayOutputs    : Integer;
+    Extension       : TExtensionIO;
+  end;  
 
   /// <summary>
   ///   Represents ONVIF device information.
@@ -128,11 +193,16 @@ interface
   ///   <field name="System" type="TSystemONVIF">
   ///     System configuration settings for the ONVIF device.
   ///   </field>
+  ///   <field name="System" type="TSystemONVIF">
+  ///     System IO settings for the ONVIF device.
+  ///   </field>
   /// </record>  
   TDeviceONVIF = Record
     XAddr     : String;
     Network   : TNetworkONVIF;
     System    : TSystemONVIF;
+    IO        : TIOOnvif;
+//    Security  : 
   end;
 
   /// <summary>
@@ -277,6 +347,19 @@ interface
   end;
 
   /// <summary>
+  /// Represents ONVIF analytics information, including the XAddr, rule support, and analytics module support.
+  /// </summary>
+  /// <remarks>
+  ///   This record is used to store information related to ONVIF analytics, providing details about the XAddr, rule support,
+  ///   and analytics module support.
+  /// </remarks>  
+  TAnalyticsONVIF = Record
+    XAddr                   : String;
+    RuleSupport             : Boolean;
+    AnalyticsModuleSupport  : Boolean;
+  End;
+  
+  /// <summary>
   ///   Represents ONVIF capabilities information.
   /// </summary>
   /// <record name="TCapabilitiesOVIF">
@@ -294,7 +377,9 @@ interface
   ///   </field>
   /// </record>  
   TCapabilitiesONVIF = Record
+    Analytics  : TAnalyticsONVIF;
     Device     : TDeviceONVIF;
+    Imaging    : TXAddrExtensionONVIF;
     Events     : TEventsONVIF;
     Media      : TMediaONVIF;
     PTZ        : TPTZONVIF;
@@ -302,5 +387,6 @@ interface
   end;
 
 implementation
+
 
 end.

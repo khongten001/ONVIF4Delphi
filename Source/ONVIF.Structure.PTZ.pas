@@ -34,23 +34,80 @@ uses System.Generics.Collections,ONVIF.Structure.Common;
 
 Type
 
+  /// <summary>
+  /// Represents supported preset tour information.
+  /// </summary>
+  /// <record name="TSupportedPresetTour">
+  ///   <field name="MaximumNumberOfPresetTours" type="Integer">
+  ///     The maximum number of supported preset tours.
+  ///   </field>
+  ///   <field name="PTZPresetTourOperation" type="TArray<String>">
+  ///     The array of supported PTZ preset tour operations.
+  ///   </field>
+  /// </record>
   TSupportedPresetTour = record
     MaximumNumberOfPresetTours : Integer;
     PTZPresetTourOperation     : TArray<String>;
   end;
 
+  /// <summary>
+  /// Represents an extension containing supported preset tour information.
+  /// </summary>
+  /// <record name="TExtension">
+  ///   <field name="SupportedPresetTour" type="TSupportedPresetTour">
+  ///     The supported preset tour information within the extension.
+  ///   </field>
+  /// </record>
   TExtension = Record
     SupportedPresetTour : TSupportedPresetTour;
   end;
 
-  TAuxiliaryCommand = record
-    Name  : String;
-    Values: TArray<string>;
-  end;
-
+  /// <summary>
+  /// Represents an array of XY PTZ ONVIF ranges.
+  /// </summary>
+  /// <remarks>
+  ///   This type definition represents an array of XY PTZ ONVIF ranges.
+  /// </remarks>
   TArrayXY = TArray<TRangeXYPTZONVIF>;
+
+  /// <summary>
+  /// Represents an array of X PTZ ONVIF ranges.
+  /// </summary>
+  /// <remarks>
+  ///   This type definition represents an array of X PTZ ONVIF ranges.
+  /// </remarks>
   TArrayX  = TArray<TRangeXPTZONVIF>;
+
   
+  /// <summary>
+  /// Represents supported PTZ spaces.
+  /// </summary>
+  /// <record name="TSupportedPTZSpaces">
+  ///   <field name="AbsolutePanTiltPositionSpace" type="TArrayXY">
+  ///     The array of absolute Pan/Tilt position spaces.
+  ///   </field>
+  ///   <field name="AbsoluteZoomPositionSpace" type="TArrayX">
+  ///     The array of absolute Zoom position spaces.
+  ///   </field>
+  ///   <field name="RelativePanTiltTranslationSpace" type="TArrayXY">
+  ///     The array of relative Pan/Tilt translation spaces.
+  ///   </field>
+  ///   <field name="RelativeZoomTranslationSpace" type="TArrayX">
+  ///     The array of relative Zoom translation spaces.
+  ///   </field>
+  ///   <field name="ContinuousPanTiltVelocitySpace" type="TArrayXY">
+  ///     The array of continuous Pan/Tilt velocity spaces.
+  ///   </field>
+  ///   <field name="ContinuousZoomVelocitySpace" type="TArrayX">
+  ///     The array of continuous Zoom velocity spaces.
+  ///   </field>
+  ///   <field name="PanTiltSpeedSpace" type="TRangeXPTZONVIF">
+  ///     The range of Pan/Tilt speed spaces.
+  ///   </field>
+  ///   <field name="ZoomSpeedSpace" type="TRangeXPTZONVIF">
+  ///     The range of Zoom speed spaces.
+  ///   </field>
+  /// </record>  
   TSupportedPTZSpaces = record
     AbsolutePanTiltPositionSpace     : TArrayXY;
     AbsoluteZoomPositionSpace        : TArrayX;
@@ -96,7 +153,6 @@ Type
     AuxiliaryCommands      : TArray<TAuxiliaryCommand>;
     Extension              : TExtension;
   end;
-
   
   /// <summary>
   ///   Represents the pan and tilt coordinates in a PTZ (Pan-Tilt-Zoom) system.
@@ -123,9 +179,14 @@ Type
     Name        : String;
     PTZPosition : TPTZPosition
   end;
-
   PTPTZPreset = ^TPTZPreset;
   
+  /// <summary>
+  /// Represents the status of PTZ modes, including Pan/Tilt and Zoom.
+  /// </summary>
+  /// <remarks>
+  ///   This record provides information about the Pan/Tilt and Zoom modes for PTZ.
+  /// </remarks>  
   TPTZModeStatus = Record
     PanTilt : String;
     Zoom    : String;
@@ -154,30 +215,37 @@ Type
     Error       : String;
     UtcTime     : TDateTime;
   End;
-  
-  
+    
+  /// <summary>
+  /// Represents a list of PTZ presets.
+  /// </summary>
+  /// <remarks>
+  ///   This class extends TList<PTPTZPreset> to manage a collection of PTZ presets.
+  /// </remarks>  
   TPTZPresetList = Class(TList<PTPTZPreset>)
   private
+    /// <summary>
+    /// Event handler for item removal from the PTZ preset list.
+    /// </summary>
+    /// <param name="Sender">The object triggering the event.</param>
+    /// <param name="Item">The PTZ preset being removed.</param>
+    /// <param name="Action">The action indicating how the item was removed.</param>  
     procedure DoItemRemoved(Sender: TObject; const Item: PTPTZPreset;Action: TCollectionNotification);
-
-  public          
+  public       
+    /// <summary>
+    /// Constructs a new instance of TPTZPresetList.
+    /// </summary>     
     constructor Create; reintroduce;
-
   end;
 
 implementation
 
 { TPTZPresetList }
-
-
-{ TPTZPresetList }
-
 procedure TPTZPresetList.DoItemRemoved(Sender: TObject; const Item: PTPTZPreset; Action: TCollectionNotification);
 begin
   if Action in [cnDeleting, cnRemoved] then  
     Dispose(item)
 end;
-
 
 constructor TPTZPresetList.Create;
 begin

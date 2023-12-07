@@ -3,10 +3,10 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,System.Generics.Collections,
-  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, ONVIF,ONVIF.Types,
+  System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, ONVIF,ONVIF.Types,ONVIF.Structure.Device,
   Vcl.StdCtrls, Vcl.ComCtrls, Vcl.ExtCtrls, ONVIF.Structure.Profile, TypInfo,ONVIF.Structure.PTZ,
   System.Rtti, ONVIF.Structure.Capabilities,System.IniFiles, ONVIF.Structure.Imaging; 
-  
+
 type
   TListArrStr = TArray<String>;
   TForm1 = class(TForm)
@@ -25,8 +25,6 @@ type
     Panel4: TPanel;
     GridPanel1: TGridPanel;
     Label4: TLabel;
-    Label2: TLabel;
-    ECurrentToken: TEdit;
     Panel5: TPanel;
     Label6: TLabel;
     GridPanel2: TGridPanel;
@@ -55,6 +53,10 @@ type
     cbAuxCmd: TComboBox;
     cbAuxValue: TComboBox;
     BSendAuxCmd: TButton;
+    Panel6: TPanel;
+    BSetCustomToken: TButton;
+    Label2: TLabel;
+    ECurrentToken: TEdit;
     procedure btnPTZPanRightMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure btnPTZTiltDownMouseDown(Sender: TObject; Button: TMouseButton;
@@ -88,6 +90,7 @@ type
     procedure cbAuxCmdSelect(Sender: TObject);
     procedure BGoToHomeClick(Sender: TObject);
     procedure BSendAuxCmdClick(Sender: TObject);
+    procedure BSetCustomTokenClick(Sender: TObject);
   private
     FONVIFManager : TONVIFManager;
     FListAuxValue : TList<TListArrStr> ;
@@ -108,6 +111,10 @@ type
     procedure DoEnablePTZ(Sender: TObject);
     procedure DoAuxiliaryCommandFound(const aCommand: String;
       const aValues: TArray<String>);
+    procedure BuildNetworkInterfaceTreeView(Node: TTreeNode;
+      const aNetworkInterface: TNetworkInterface);
+    procedure BuildSystemDateTimeTreeView(Node: TTreeNode;
+      const aSystemDateTime: TONVIFSystemDateAndTime);
   public
     { Public declarations }
   end;
@@ -204,7 +211,10 @@ end;
 procedure TForm1.ListView1Click(Sender: TObject);
 begin
   if Assigned(ListView1.Selected) then
-    ECurrentToken.Text := ListView1.Selected.SubItems[0];
+  begin
+    ECurrentToken.Text      := ListView1.Selected.SubItems[0];
+    FONVIFManager.PTZ.Token := ECurrentToken.Text;
+  end;
 end;
 
 procedure TForm1.Button10MouseDown(Sender: TObject; Button: TMouseButton;
@@ -235,8 +245,9 @@ begin
     tv1.Items.AddChild(LChildNode,Format('FirmwareVersion: %s',[FONVIFManager.Device.FirmwareVersion]));
     tv1.Items.AddChild(LChildNode,Format('SerialNumber: %s',[FONVIFManager.Device.SerialNumber]));
     tv1.Items.AddChild(LChildNode,Format('HardwareId: %s',[FONVIFManager.Device.HardwareId])) ;   
+    BuildSystemDateTimeTreeView(LRootNode,FONVIFManager.SystemDateTime);
     BuildCapabilitiesTreeView(LRootNode,FONVIFManager.Capabilities);
-
+    BuildNetworkInterfaceTreeView(LRootNode,FONVIFManager.NetworkInterface);
     LRootNode := tv1.Items.Add(nil,'Profiles');
 
     for I := Low(FONVIFManager.Profiles) to High(FONVIFManager.Profiles) do      
@@ -267,12 +278,19 @@ end;
 procedure TForm1.DoAuxiliaryCommandFound(const aCommand:String;const aValues:TArray<String>);
 var LIdxValue : Integer;
 begin
-  LIdxValue := FListAuxValue.Add(aValues);
+  Try
+    LIdxValue := FListAuxValue.Add(aValues);
   
-  cbAuxCmd.Items.AddObject(aCommand,TObject(LIdxValue));  
+    cbAuxCmd.Items.AddObject(aCommand,TObject(LIdxValue));  
+  Except on E: Exception do
+    DoOnWriteLog('TForm1.DoAuxiliaryCommandFound',e.message,tpLivException);
+
+  End;
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
+var
+  I: Integer;
 
 begin
   Memo1.Lines.Clear;
@@ -284,11 +302,18 @@ begin
   FONVIFManager.OnPTZTokenFound              := DoONProfileTokenFound;  
   FONVIFManager.OnReadInfoComplete           := DoBuildTreeView;
   FONVIFManager.PTZ.OnGetPTZInfo             := DoEnablePTZ; 
+  FONVIFManager.ExcludeReuqest.RecordingList := False;
   FONVIFManager.PTZ.OnAuxiliaryCommandFound  := DoAuxiliaryCommandFound;
   ListView1.Clear;
-  cbAuxCmd.Clear;
-  cbAuxValue.Clear;
+  cbAuxCmd.Items.Clear;
+  cbAuxCmd.ItemIndex := -1;
+  cbAuxCmd.Text      := '';
+  cbAuxValue.Items.Clear;
+  cbAuxValue.Text      := '';
+  cbAuxValue.ItemIndex := -1;
+
   ListView1.Items.BeginUpdate;
+
   FListAuxValue.Clear;
   FONVIFManager.ReadInfo;
 end;
@@ -326,7 +351,8 @@ begin
   if not Assigned(FONVIFManager) then Exit;
   
   if InputQuery('New preset','',LPresetName) then  
-    FONVIFManager.PTZ.SetPreset(LPresetName,LnewIndex,-1);  
+    if FONVIFManager.PTZ.SetPreset(LPresetName,LnewIndex,-1) then
+      ShowMessage(Format('Preset found [%d]',[FONVIFManager.PTZ.PresetList.Count]));
 end;
 
 procedure TForm1.BRemovePresetClick(Sender: TObject);
@@ -348,6 +374,12 @@ procedure TForm1.BSendAuxCmdClick(Sender: TObject);
 begin
   FONVIFManager.PTZ.SendAuxiliaryCommand(cbAuxCmd.Text,cbAuxValue.Text)
   
+end;
+
+procedure TForm1.BSetCustomTokenClick(Sender: TObject);
+begin
+  if not Assigned(FONVIFManager) then Exit;
+  FONVIFManager.PTZ.Token := ECurrentToken.Text;
 end;
 
 procedure TForm1.BSetHomeClick(Sender: TObject);
@@ -418,6 +450,54 @@ begin
     LContext.Free;
   end;
 end;
+
+
+
+procedure TForm1.BuildNetworkInterfaceTreeView(Node: TTreeNode; const aNetworkInterface: TNetworkInterface);
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+begin
+  Node := tv1.Items.AddChild(nil, 'NetworkInterface');
+
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TNetworkInterface));
+
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aNetworkInterface);
+      processTValue(Node,LField,LValue);
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
+
+
+procedure TForm1.BuildSystemDateTimeTreeView(Node: TTreeNode; const aSystemDateTime: TONVIFSystemDateAndTime);
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+begin
+  Node := tv1.Items.AddChild(nil, 'SystemDatetime');
+
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TONVIFSystemDateAndTime));
+
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aSystemDateTime);
+      processTValue(Node,LField,LValue);
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
+
 
 procedure TForm1.BuildCapabilitiesTreeView(Node: TTreeNode; const aCapabilities: TCapabilitiesONVIF);
 var LContext: TRttiContext;

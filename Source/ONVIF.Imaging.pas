@@ -132,8 +132,7 @@ type
     ///  Via this command the current status of the Move operation can be requested. 
     ///  Supported for this command is available if the support for the Move operation is signalled via GetMoveOptions.    
     /// </summary>
-    function GetStatus: Boolean;
-    
+    function GetStatus: Boolean;    
   public
     /// <summary>
     ///   Constructor for initializing a new instance of the Imaging Manager.
@@ -225,6 +224,8 @@ end;
 
 function TONVIFImagingManager.GetCapabilities: Boolean;
 var LResponseStr : String;
+    LSoapBodyNode: IXMLNode;
+    LNodeTmp     : IXMLNode; 
 begin
   Result := False;  
   if not isValidToken('TONVIFImagingManager.GetCapabilities') then Exit;
@@ -238,9 +239,16 @@ begin
       FONVIFManager.DoWriteLog('TONVIFImagingManager.GetCapabilities',LResponseStr,tpLivXMLResp,true);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
-    //TODO Parser
-    FSupportImageStabilization := False;
-    FSupportImagingPresets     := False;    
+    LSoapBodyNode  := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;
+ 
+ 
+    LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'ImageStabilization');
+    if Assigned(LNodeTmp) then    
+      FSupportImageStabilization := StrToBoolDef(LNodeTmp.Text,False);
+    LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'AdaptablePreset ');
+    if Assigned(LNodeTmp) then    
+      FSupportImagingPresets := StrToBoolDef(LNodeTmp.Text,False);
   end;
 end;
 

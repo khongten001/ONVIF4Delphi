@@ -38,13 +38,14 @@ object Form1: TForm1
     Width = 497
     Height = 540
     Align = alRight
+    BevelOuter = bvNone
     Caption = 'Panel2'
     TabOrder = 0
     object ListView1: TListView
-      Left = 1
-      Top = 1
-      Width = 495
-      Height = 538
+      Left = 0
+      Top = 0
+      Width = 497
+      Height = 540
       Align = alClient
       Columns = <
         item
@@ -149,31 +150,15 @@ object Form1: TForm1
     Align = alRight
     Enabled = False
     TabOrder = 4
-    object Label2: TLabel
-      AlignWithMargins = True
-      Left = 4
-      Top = 4
-      Width = 233
-      Height = 13
-      Align = alTop
-      Caption = 'Current token'
-      Font.Charset = DEFAULT_CHARSET
-      Font.Color = clWindowText
-      Font.Height = -11
-      Font.Name = 'Tahoma'
-      Font.Style = [fsBold]
-      ParentFont = False
-      WordWrap = True
-      ExplicitWidth = 79
-    end
     object Panel4: TPanel
       Left = 1
-      Top = 230
+      Top = 256
       Width = 239
       Height = 50
       Align = alTop
       BevelOuter = bvNone
       TabOrder = 0
+      ExplicitTop = 230
       object Label4: TLabel
         AlignWithMargins = True
         Left = 3
@@ -225,12 +210,6 @@ object Form1: TForm1
           Height = 25
           Anchors = []
           Caption = '+'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 0
           OnMouseDown = btnPTZZoomOutMouseDown
           OnMouseUp = btnPTZPanRightMouseUp
@@ -242,35 +221,21 @@ object Form1: TForm1
           Height = 25
           Anchors = []
           Caption = '-'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 1
           OnMouseDown = btnPTZZoomInMouseDown
           OnMouseUp = btnPTZPanRightMouseUp
         end
       end
     end
-    object ECurrentToken: TEdit
-      AlignWithMargins = True
-      Left = 4
-      Top = 23
-      Width = 233
-      Height = 21
-      Align = alTop
-      TabOrder = 1
-    end
     object Panel5: TPanel
       Left = 1
-      Top = 47
+      Top = 73
       Width = 239
       Height = 152
       Align = alTop
       BevelOuter = bvNone
-      TabOrder = 2
+      TabOrder = 1
+      ExplicitTop = 47
       object Label6: TLabel
         AlignWithMargins = True
         Left = 3
@@ -342,14 +307,7 @@ object Form1: TForm1
           Width = 78
           Height = 43
           Align = alClient
-          Cancel = True
           Caption = '^'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 0
           OnMouseDown = btnPTZTiltUpMouseDown
           OnMouseUp = btnPTZPanRightMouseUp
@@ -360,14 +318,7 @@ object Form1: TForm1
           Width = 77
           Height = 42
           Align = alClient
-          Cancel = True
           Caption = '<'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 1
           OnMouseDown = btnPTZPanLeftMouseDown
           OnMouseUp = btnPTZPanRightMouseUp
@@ -389,14 +340,7 @@ object Form1: TForm1
           Width = 78
           Height = 42
           Align = alClient
-          Cancel = True
           Caption = '>'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 3
           OnMouseDown = btnPTZPanRightMouseDown
           OnMouseUp = btnPTZPanRightMouseUp
@@ -407,14 +351,7 @@ object Form1: TForm1
           Width = 78
           Height = 42
           Align = alClient
-          Cancel = True
           Caption = 'v'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 4
           OnMouseDown = btnPTZTiltDownMouseDown
           OnMouseUp = btnPTZPanRightMouseUp
@@ -423,12 +360,13 @@ object Form1: TForm1
     end
     object pFocus: TPanel
       Left = 1
-      Top = 280
+      Top = 306
       Width = 239
       Height = 50
       Align = alTop
       BevelOuter = bvNone
-      TabOrder = 3
+      TabOrder = 2
+      ExplicitTop = 280
       object Label5: TLabel
         AlignWithMargins = True
         Left = 3
@@ -480,12 +418,6 @@ object Form1: TForm1
           Height = 25
           Anchors = []
           Caption = '+'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 0
           OnMouseDown = Button10MouseDown
           OnMouseUp = Button10MouseUp
@@ -497,12 +429,6 @@ object Form1: TForm1
           Height = 25
           Anchors = []
           Caption = '-'
-          Font.Charset = DEFAULT_CHARSET
-          Font.Color = clWindowText
-          Font.Height = -15
-          Font.Name = 'MS Sans Serif'
-          Font.Style = [fsBold]
-          ParentFont = False
           TabOrder = 1
           OnMouseDown = Button9MouseDown
           OnMouseUp = Button10MouseUp
@@ -512,22 +438,25 @@ object Form1: TForm1
     object BSetHome: TButton
       AlignWithMargins = True
       Left = 4
-      Top = 202
+      Top = 228
       Width = 233
       Height = 25
       Align = alTop
       Caption = 'Set home'
-      TabOrder = 4
+      TabOrder = 3
       OnClick = BSetHomeClick
+      ExplicitLeft = 6
+      ExplicitTop = 202
     end
     object Panel3: TPanel
       Left = 1
-      Top = 330
+      Top = 356
       Width = 239
       Height = 84
       Align = alTop
       BevelOuter = bvNone
-      TabOrder = 5
+      TabOrder = 4
+      ExplicitTop = 330
       object Label7: TLabel
         AlignWithMargins = True
         Left = 3
@@ -587,13 +516,14 @@ object Form1: TForm1
     end
     object pnlAuxCmd: TPanel
       Left = 1
-      Top = 414
+      Top = 440
       Width = 239
       Height = 91
       Align = alTop
       BevelOuter = bvNone
       Enabled = False
-      TabOrder = 6
+      TabOrder = 5
+      ExplicitTop = 414
       object Label3: TLabel
         AlignWithMargins = True
         Left = 3
@@ -627,6 +557,52 @@ object Form1: TForm1
         Caption = 'Send'
         TabOrder = 2
         OnClick = BSendAuxCmdClick
+      end
+    end
+    object Panel6: TPanel
+      Left = 1
+      Top = 1
+      Width = 239
+      Height = 72
+      Align = alTop
+      BevelOuter = bvNone
+      TabOrder = 6
+      object Label2: TLabel
+        AlignWithMargins = True
+        Left = 3
+        Top = 3
+        Width = 233
+        Height = 13
+        Align = alTop
+        Caption = 'Current token'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -11
+        Font.Name = 'Tahoma'
+        Font.Style = [fsBold]
+        ParentFont = False
+        WordWrap = True
+        ExplicitWidth = 79
+      end
+      object BSetCustomToken: TButton
+        Left = 131
+        Top = 48
+        Width = 105
+        Height = 25
+        Caption = 'set custom token'
+        TabOrder = 0
+        OnClick = BSetCustomTokenClick
+      end
+      object ECurrentToken: TEdit
+        AlignWithMargins = True
+        Left = 3
+        Top = 22
+        Width = 233
+        Height = 21
+        Align = alTop
+        TabOrder = 1
+        ExplicitLeft = 6
+        ExplicitTop = 30
       end
     end
   end

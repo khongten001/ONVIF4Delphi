@@ -47,9 +47,10 @@ Type
   /// </remarks>
   TONVIFSOAPBuilder = class
   private
-     FLogin     : String;
-     FPassword  : String;
-    
+     FLogin                : String;
+     FPassword             : String;
+     FDateTimeDevice       : TDateTime;
+     FDeviceDifferenceSec  : Integer;
     /// <summary>
     ///   Calculates the password digest based on the provided parameters.
     /// </summary>
@@ -91,9 +92,29 @@ Type
     ///   A string containing the details of the SOAP connection in XML format.
     /// </returns>
     function GetSoapXMLConnection:String;
-
   public
      constructor Create(const aLogin, aPassword:String);
+
+    /// <summary>
+    /// Prepares an ONVIF request to retrieve the system date and time information.
+    /// </summary>
+    /// <returns>The ONVIF request for getting system date and time.</returns>   
+    function PrepareGetSystemDateTimeRequest: String; 
+    
+
+    /// <summary>
+    /// Prepares an ONVIF request to retrieve recording information.
+    /// </summary>
+    /// <returns>The ONVIF request for getting recording information.</returns>
+    function PrepareGetRecording: String;             //media
+
+       
+    /// <summary>
+    /// Prepares an ONVIF request to retrieve the stream URI for a specific token.
+    /// </summary>
+    /// <param name="aToken">The token associated with the stream.</param>
+    /// <returns>The ONVIF request for getting stream URI.</returns>
+    function PrepareGetStreamURI(const aToken: String): String; //media
 
     /// <summary>
     ///   Prepares a GetCapabilities request for ONVIF communication.
@@ -112,7 +133,6 @@ Type
     /// <param name="aSpeed">Speed parameter for the focus control (absolute or relative).</param>
     /// <returns>String representation of the SOAP request.</returns>
     function PrepareImagingMoveFocus(const aToken: String; aAbsolutePos, aRelativeDistance, aSpeed: String): String;
-
     
     /// <summary>
     ///   Prepares an XML SOAP request for stopping the focus movement in imaging.
@@ -280,6 +300,14 @@ Type
     ///   An XML-formatted string representing the PTZ GetNodes request.
     /// </returns>       
     function PrepareGetNodes: String;    
+
+    /// <summary>
+    ///   Prepares an ONVIF PTZ GetNode
+    /// </summary>
+    /// <returns>
+    ///   An XML-formatted string representing the PTZ GetNode request.
+    /// </returns>           
+    function PrepareGetNode: String;    
     
     /// <summary>
     ///   Prepares an ONVIF PTZ SetPreset
@@ -309,7 +337,15 @@ Type
     ///   A string containing the XML-formatted request for device information.
     /// </returns>
     function PrepareGetDeviceInformationRequest: String;
-    
+
+    /// <summary>
+    ///   Prepares and returns an XML string representing a request for network interface.
+    /// </summary>
+    /// <returns>
+    ///   A string containing the XML-formatted request for network interface.
+    /// </returns>    
+    function PrepareGetNetworkInterfaceRequest: String;
+        
     /// <summary>
     ///   Prepares an ONVIF Imaginig Capabilities  request based on the specified command.
     /// </summary>
@@ -317,9 +353,10 @@ Type
     ///   An XML-formatted string representing the Imaginig Capabilities move request.
     /// </returns>        
     function PrepareImagingCapabilities: String;    
+
+    property DateTimeDevice       : TDateTime read FDateTimeDevice      write FDateTimeDevice;
+    property DeviceDifferenceSec  : Integer   read FDeviceDifferenceSec write FDeviceDifferenceSec;
   end;
-
-
   
 implementation
 
@@ -436,12 +473,53 @@ begin
   Result := GetSoapXMLConnection+ GET_CAPABILITIES;
 end;
 
+
+function TONVIFSOAPBuilder.PrepareGetNetworkInterfaceRequest: String;
+const GET_NETWORK_INTERFACE = '<tds:GetNetworkInterfaces>'+
+                         '</tds:GetNetworkInterfaces>' + END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection+ GET_NETWORK_INTERFACE;
+end;
+
+function TONVIFSOAPBuilder.PrepareGetSystemDateTimeRequest: String;
+const GET_SYSTEM_DATETIME = '<tds:GetSystemDateAndTime/>'+ END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection+ GET_SYSTEM_DATETIME;
+end;
+
 {Immaginig}
+
 
 function TONVIFSOAPBuilder.PrepareGetProfilesRequest: String;
 const GET_PROFILES = '<trt:GetProfiles/> ' + END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection + GET_PROFILES
+end;
+
+function TONVIFSOAPBuilder.PrepareGetRecording: String;
+const GET_RECORDING = '<trc:GetRecordings/> ' + END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection + GET_RECORDING
+end;
+
+function TONVIFSOAPBuilder.PrepareGetStreamURI(const aToken:String): String;
+const GET_STREAMURI = '<trt:GetStreamUri> '+
+                      '<trt:StreamSetup '+
+                      'xsi:type="tt:StreamSetup"> '+
+                      '<tt:Stream> '+
+                      'RTP-Unicast '+
+                      '</tt:Stream> '+
+                      '<tt:Transport '+
+                      'xsi:type="tt:Transport"> '+
+                      '<tt:Protocol> '+
+                      'RTSP '+
+                      '</tt:Protocol> '+
+                      '</tt:Transport> '+
+                      '</trt:StreamSetup> '+
+                      '<trt:ProfileToken>%s </trt:ProfileToken> '+
+                      '</trt:GetStreamUri> '+ END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection + Format(GET_STREAMURI,[aToken]);
 end;
 
 function TONVIFSOAPBuilder.PrepareImagingMoveOptions(const aToken:String): String;
@@ -459,8 +537,6 @@ begin
   Result := GetSoapXMLConnection+ GET_CAPABILITIES;
 end;
 
-
-
 function TONVIFSOAPBuilder.PrepareImagingGetStatus(const aToken: String): String;
 const GET_SETTINGS  = '<timg:GetStatus> '+
                       '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
@@ -476,7 +552,6 @@ const STOP_FOCUS_COMMAND =  '<timg:Stop>'+
 begin
   Result := GetSoapXMLConnection+ Format(STOP_FOCUS_COMMAND,[aToken]);
 end;
-
 
 function TONVIFSOAPBuilder.PrepareImagingMoveFocus(const aToken: String;aAbsolutePos,aRelativeDistance,aSpeed:String): String;
 const SET_MOVE_START    =   '<timg:Move>' +
@@ -599,6 +674,13 @@ const GO_TO_HOME  = '<tptz:GotoHomePosition> '+
                       '</tptz:GotoHomePosition>'+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(GO_TO_HOME,[aToken]);
+end;
+
+function TONVIFSOAPBuilder.PrepareGetNode: String;
+const GET_NODES  = '<tptz:GetNode> '+        
+                    '</tptz:GetNode>'+ END_SOAP_XML;
+begin
+  Result := GetSoapXMLConnection+ GET_NODES;
 end;
 
 function TONVIFSOAPBuilder.PrepareGetNodes: String;

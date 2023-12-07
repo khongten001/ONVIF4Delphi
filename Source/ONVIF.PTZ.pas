@@ -40,6 +40,8 @@ Type
   TOnAuxiliaryCommandFound = procedure (const aCommand:String;const aValues:TArray<String>) of object;
   
   TONVIFPTZManager     = class;
+
+
   /// <summary>
   ///   Class representing supported PTZ (Pan-Tilt-Zoom) information.
   ///   • Home: Property indicating whether home preset is supported.
@@ -75,6 +77,17 @@ Type
     ///   Function to check if relative mode is supported.
     /// </summary>    
     function GetSupportedRelativeModeMode: Boolean;
+
+    /// <summary>
+    /// Retrieves information about the support for AuxiliaryCommands.
+    /// </summary>
+    /// <returns>
+    ///   Returns True if AuxiliaryCommands is supported; otherwise, returns False.
+    /// </returns>
+    /// <remarks>
+    ///   Call this function to check whether the device supports AuxiliaryCommands.
+    ///   The result indicates the availability of the feature.
+    /// </remarks>    
     function GetAuxiliaryCommands: Boolean;
   public
     /// <summary>
@@ -108,11 +121,13 @@ Type
     property RelativeMode       : Boolean read GetSupportedRelativeModeMode; 
 
     /// <summary>
-    ///   Property indicating whether AuxiliaryCommands is supported.
-    /// </summary>    
+    ///   Indicates whether AuxiliaryCommands is supported.
+    /// </summary>
+    /// <remarks>
+    ///   This property provides information about the support for AuxiliaryCommands.
+    ///   It returns True if the feature is supported, and False otherwise.
+    /// </remarks>   
     property AuxiliaryCommands  : Boolean read GetAuxiliaryCommands; 
-    
-    
   end;  
     
   /// https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v1706.pdf?441d4a&441d4a
@@ -221,10 +236,16 @@ Type
     function GetNodes: Boolean;    
 
     /// <summary>
+    ///  A PTZ-capable device shall implement the GetNode operation and return the properties of the requested PTZ node, if it
+    ///  exists. Otherwise, the device shall respond with an appropriate fault message    
+    /// </summary>        
+    function GetNode(const aNodeToken:String;aPTZNode:String): Boolean;    
+
+    /// <summary>
     ///   Property providing access to supported PTZ (Pan-Tilt-Zoom) information.
     /// </summary>    
     property SupportedInfo : TSupportedPTZInfo  read FSupportedInfo;
-    
+
     {Preset}
     /// <summary>
     ///   Loads the list of presets associated with the PTZ functionality.
@@ -442,14 +463,26 @@ Type
     /// The operation is supported if the AuxiliarySupported element of the PTZNode is true
     /// </summary>    
     function SendAuxiliaryCommand(const aCommand,aParamValue:String):Boolean;
-     
-    
+         
     /// <summary>
     ///   Gets or sets the token of the ONVIF camera.
     /// </summary>    
     property Token                   : String                    read FToken                   write SetToken;    
 
+    /// <summary>
+    /// Event triggered when PTZ information request is completed.
+    /// </summary>
+    /// <remarks>
+    ///   Assign a handler to this event to receive notifications when the PTZ information request is completed.
+    /// </remarks>
     property OnGetPTZInfo            : TNotifyEvent              read FOnGetPTZInfo            write FOnGetPTZInfo;
+    
+    /// <summary>
+    /// Event triggered when an auxiliary command is found.
+    /// </summary>
+    /// <remarks>
+    ///   Assign a handler to this event to receive notifications when an auxiliary command is found.
+    /// </remarks>
     property OnAuxiliaryCommandFound : TOnAuxiliaryCommandFound  read FOnAuxiliaryCommandFound write FOnAuxiliaryCommandFound;    
     
     /// <summary>
@@ -467,6 +500,7 @@ begin
   FONVIFManager := aONVIFManager;
   FPresentList  := TPTZPresetList.Create;
   FSupportedInfo:= TSupportedPTZInfo.Create(self);
+
   ResetPTZNode;
   ResetPTZStatus;
 end;
@@ -599,7 +633,7 @@ begin
     for I := 0 to LPresetListNode.ChildNodes.Count -1 do
     begin
       New(LPreset);
-      LPreset^.Token := String(LPresetListNode.ChildNodes[I].Attributes['token']);
+      LPreset^.Token := TONVIFXMLUtils.GetAttribute(LPresetListNode.ChildNodes[I],'token');
       LPreset^.Name  := TONVIFXMLUtils.GetChildNodeValue(LPresetListNode.ChildNodes[I],'Name');     
       LPtzPosNode    := TONVIFXMLUtils.RecursiveFindNode(LPresetListNode.ChildNodes[I],'PTZPosition');
       if Assigned(LPtzPosNode) then
@@ -620,6 +654,26 @@ begin
         FONVIFManager.DoWriteLog('TONVIFPTZManager.LoadPresetList',Format(' Found [%d] preset ',[FPresentList.Count]),tpLivInfo,True);      
     {TSI:IGNORE OFF}
     {$ENDREGION}
+  end;
+end;
+
+
+function TONVIFPTZManager.GetNode(const aNodeToken:String;aPTZNode:String): Boolean; 
+var LResponseStr : String;
+begin
+  Result := False;  
+
+  raise Exception.Create('not implemented');
+
+  //TODO
+  ResetPTZNode;
+  if not isValidToken('TONVIFPTZManager.GetNode') then Exit;
+
+  Result := FONVIFManager.ExecuteRequest(atPTZ,'TONVIFPTZManager.GetNode',FONVIFManager.GetSOAPBuilder.PrepareGetNode,LResponseStr);  
+
+  if Result then
+  begin
+  
   end;
 end;
 
@@ -760,14 +814,14 @@ begin
       end;
       FPTZNode.MaximumNumberOfPresets := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'MaximumNumberOfPresets'),-1);  
       FPTZNode.HomeSupported          := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'HomeSupported'),False); 
-      LTmpStr                         := LNodes.ChildNodes[i].DOMNode.localName;
+      LCountAux                       := 0;
       LCountAux                       := 0;
       for X := 0 to LNodes.ChildNodes[i].ChildNodes.Count -1 do
       begin  
         if SameText(LNodes.ChildNodes[i].ChildNodes[X].DOMNode.localName,'AuxiliaryCommands') then
         begin
           LFoundAux    := False;        
-          LTmpStr      := LNodes.ChildNodes[i].ChildNodes[X].Text.Replace('tt:',String.Empty,[rfIgnoreCase]);
+          LTmpStr      := LNodes.ChildNodes[i].ChildNodes[X].Text.Replace('tt:',String.Empty,[rfIgnoreCase]).Trim;
           if not LTmpStr.Trim.IsEmpty then
           begin
             LTmpStrSplit := LTmpStr;
@@ -801,7 +855,7 @@ begin
                          
               SetLength(FPTZNode.AuxiliaryCommands[LCountAux].Values,1);        
               if LTmpStr.Contains('|') then            
-                FPTZNode.AuxiliaryCommands[LCountAux].Values[0] :=  LTmpStr.Split(['|'])[1]              
+                FPTZNode.AuxiliaryCommands[LCountAux].Values[0] :=LTmpStr.Split(['|'])[1]              
               else
                 FPTZNode.AuxiliaryCommands[LCountAux].Values[0]:= LTmpStr;        
             end;
@@ -1072,7 +1126,7 @@ begin
       New(LPreset);
       LPreset^.Name      := aPresetName;
       LPresetSetResponse := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'SetPresetsResponse');      
-      LPreset^.Token     := String(LPresetSetResponse.Attributes['token']);      
+      LPreset^.Token     := TONVIFXMLUtils.GetAttribute(LPresetSetResponse,'token');
       aNewIndexPreset    := FPresentList.Add(LPreset);
       Result             := True;      
     end;
@@ -1092,9 +1146,10 @@ begin
     end
     else
     begin      
-      GetStatus;
-      GetNodes; 
-//  TODO    GetConfigurationOptions;
+      GetStatus; 
+      GetNodes;
+      
+      //  TODO    GetConfigurationOptions;
       FONVIFManager.SetTokenImagingByPTZToken; 
       if Assigned(FOnGetPTZInfo) then      
         FOnGetPTZInfo(Self); 
@@ -1148,6 +1203,7 @@ begin
   FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.URI                         := String.Empty;  
   FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Min                  := -1;
   FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Max                  := -1;  
+  SetLength(FPTZNode.AuxiliaryCommands,0)
 end;
 
 { TSupportedInfo }

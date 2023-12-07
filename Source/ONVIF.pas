@@ -31,7 +31,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.SyncObjs, System.Messaging,ONVIF.Intf,
-  ONVIF.SOAP.Builder, System.IOUtils,  Soap.XSBuiltIns,ONVIF.Imaging,ActiveX,
+  ONVIF.SOAP.Builder, System.IOUtils,  Soap.XSBuiltIns,ONVIF.Imaging,ActiveX,System.DateUtils,
   ONVIF.Constant.Error, ONVIF.Types, IdAuthenticationDigest, Winsock, XmlDoc,
   XmlIntf, XMLDom, System.Math, System.NetConsts, ONVIF.Structure.Device,ONVIF.PTZ,
   ONVIF.Structure.Profile, System.Net.HttpClient, System.net.UrlClient,
@@ -49,7 +49,6 @@ Type
     TODO 
       - PresetTour
       - Recoding
-      - Auxiliar
       - Imaging 
          -- Saturation, contrast ecc
          -- IRCut 
@@ -76,9 +75,7 @@ Type
         -- AudioEncoderConfiguration  : TAudioEncoderConfiguration;
         -= VideoAnalyticsConfiguration: TVideoAnalyticsConfiguration;
         -- Extension                  : TExtension;          
-          --- Need example  
-                  
-      - SystemdateTime
+          --- Need example            
    }
 
   /// <summary>
@@ -95,7 +92,36 @@ Type
   ///   the encountered token on profiles and allowing modification of the default behavior.
   /// </remarks>
   TEventTokenFound  = procedure (const aName,aToken : String;var aSetForDefault:Boolean) of object;
-  
+
+
+  /// <summary>
+  ///   Represents a class for excluding specific information in a request.
+  /// </summary>
+  /// <remarks>
+  ///   TExcludeRequest is used to control the exclusion of certain information in a request.
+  ///   It allows excluding device information and network interface details.
+  /// </remarks>
+  TExcludeRequest = Class(TPersistent)
+  strict private
+    FDeveficeInformation : Boolean;
+    FNetworkInterface    : Boolean;
+    FRecordingList       : Boolean;
+  public
+    /// <summary>
+    /// Gets or sets a value indicating whether to exclude device information.
+    /// </summary>
+    /// <value>Default value is False.</value>
+    property DeveficeInformation : Boolean read FDeveficeInformation write FDeveficeInformation default false;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to exclude network interface details.
+    /// </summary>
+    /// <value>Default value is False.</value>
+    property NetworkInterface    : Boolean read FNetworkInterface    write FNetworkInterface    default false;
+    property RecordingList       : Boolean read FRecordingList       write FRecordingList       default true;
+    
+  End;
+
 
   /// <summary>
   ///   Represents a manager class for handling ONVIF-related functionalities.
@@ -105,24 +131,39 @@ Type
     FUrl                     : String;
     FLastResponse            : String;
     FPathFileResponseOnDisk  : String;
+    FDateTimeDevice          : TDateTime;
     FSaveResponseOnDisk      : Boolean;
     FIsFixedToken            : Boolean;
     FLastStatusCode          : Integer;
     FSpeed                   : Byte;
     FDevice                  : TDeviceInformation;
     FSOAPBuilder             : TONVIFSOAPBuilder;  
-
+    FExcludeReuqest          : TExcludeRequest;
     FProfiles                : TProfiles;    
     FCapabilities            : TCapabilitiesONVIF;
     FPTZ                     : TONVIFPTZManager;
     FImaging                 : TONVIFImagingManager;
+    FNetworkInterface        : TNetworkInterface;
+    FSystemDateTime          : TONVIFSystemDateAndTime;
     {Event}
     FOnWriteLog              : TEventWriteLog;
     FOnReadInfoComplete      : TNotifyEvent; 
     FOnPTZTokenFound         : TEventTokenFound;
     FOnSourceiideoTokenFound : TEventTokenFound;
 
+
+    /// <summary>
+    /// Retrieves the SOAP builder for ONVIF requests.
+    /// </summary>
+    /// <returns>
+    ///   Returns an instance of TONVIFSOAPBuilder used for constructing ONVIF SOAP requests.
+    /// </returns>
+    /// <remarks>
+    ///   Call this function to obtain the SOAP builder instance, allowing the construction
+    ///   of ONVIF SOAP requests for communication with the device.
+    /// </remarks>    
     function GetSOAPBuilder:TONVIFSOAPBuilder;
+    
     /// <summary>
     ///   Generates a URL based on the specified ONVIF address type.
     /// </summary>
@@ -144,6 +185,15 @@ Type
     /// </summary>    
     procedure Reset;
 
+    /// <summary>
+    /// Sets the last status code and logs the associated method name and error code.
+    /// </summary>
+    /// <param name="aMethodName">The name of the method associated with the status code.</param>
+    /// <param name="aErrorCode">The error code to be set as the last status code.</param>
+    /// <remarks>
+    ///   Call this procedure to set the last status code and log information about the associated method name
+    ///   and error code. This information is useful for tracking the status of the last operation.
+    /// </remarks>    
     procedure SetLastStatusCode(const aMethodName:String;const aErrorCode:Integer);
 
     /// <summary>
@@ -187,7 +237,6 @@ Type
     ///   The URL to be set.
     /// </param>
     procedure SetUrl(const aValue: String);
-
   
     /// <summary>
     ///   Writes a log entry with specified parameters.
@@ -259,12 +308,65 @@ Type
     procedure DoOnReadInfoCompleate;
 
     /// <summary>
-    ///   Procedure to set the imaging token based on the PTZ (Pan-Tilt-Zoom) token.
-    /// </summary>    
+    /// Sets the imaging token by retrieving it from the PTZ token.
+    /// </summary>
+    /// <remarks>
+    ///   Call this procedure to set the imaging token by obtaining it from the associated PTZ token.
+    /// </remarks>
     procedure SetTokenImagingByPTZToken;
+
+    /// <summary>
+    /// Retrieves the speed value.
+    /// </summary>
+    /// <returns>
+    ///   Returns the speed value as a Byte.
+    /// </returns>
+    /// <remarks>
+    ///   Call this function to get the speed value.
+    /// </remarks>
     function GetSpeed: Byte;
+
+    /// <summary>
+    /// Sets the speed value.
+    /// </summary>
+    /// <param name="Value">The speed value to be set.</param>
+    /// <remarks>
+    ///   Call this procedure to set the speed value.
+    /// </remarks>
     procedure SetSpeed(const Value: Byte);
-    function GetBodyNode(const aResponseText:String): IXMLNode;
+
+    /// <summary>
+    /// Retrieves the body node from the specified response text.
+    /// </summary>
+    /// <param name="aResponseText">The response text containing XML data.</param>
+    /// <returns>
+    ///   Returns the body node as an IXMLNode.
+    /// </returns>
+    /// <remarks>
+    ///   Call this function to extract the body node from the provided response text.
+    /// </remarks>
+    function GetBodyNode(const aResponseText: String): IXMLNode;
+
+    /// <summary>
+    /// Resets the network interface.
+    /// </summary>
+    /// <remarks>
+    ///   Call this procedure to reset the network interface.
+    /// </remarks>
+    procedure ResetNetworkInterface;
+
+    /// <summary>
+    /// Retrieves the system date and time information.
+    /// </summary>
+    /// <returns>
+    ///   Returns True if the retrieval of system date and time is successful; otherwise, returns False.
+    /// </returns>
+    /// <remarks>
+    ///   Call this function to obtain the system date and time information.
+    /// </remarks>
+    function GetSystemDateTime: Boolean;
+    procedure ResetSystemDateAndTime;
+
   public
     /// <summary>
     ///   Initializes a new instance of the TONVIFManager class with the specified ONVIF service details.
@@ -313,20 +415,41 @@ Type
     procedure ReadInfoAsync;    
 
     /// <summary>
-    ///   Retrieves device information and returns a Boolean indicating the success of the operation.
+    ///   This operation gets basic device information from the device.
     /// </summary>
     /// <returns>
     ///   True if the device information is successfully retrieved; False otherwise, compile TDeviceInformation record.
     /// </returns>    
     function GetDeviceInformation: Boolean;
+
+    /// <summary>
+    ///   This operation gets the network interface configuration from a device. 
+    ///   The device shall support return of network interface configuration settings as defined by the NetworkInterface type through the GetNetworkInterfaces command.
+    /// </summary>
+    /// <returns>
+    ///   True if the network interfaces is successfully retrieved; False otherwise, compile TDeviceInformation record.
+    /// </returns>       
+    function GetNetworkInterfaces: Boolean;
     
     /// <summary>
-    ///   Retrieves and processes capabilities for the current ONVIF device.
+    ///   This method has been replaced by the more generic GetServices method. 
+    //    For capabilities of individual services refer to the GetServiceCapabilities methods.
     /// </summary>
     /// <returns>
     ///   Returns True if the capabilities are successfully retrieved and processed; otherwise, returns False.
     /// </returns>   
     function GetCapabilities: Boolean; 
+
+    function GetRecording: Boolean;    
+    
+    /// <summary>
+    /// Writes the last error code log for a specific method.
+    /// </summary>
+    /// <param name="aMethodName">The name of the method associated with the last error code.</param>
+    /// <remarks>
+    ///   Call this procedure to write the last error code log for a specific method.
+    ///   The log includes information about the associated method name and the last error code.
+    /// </remarks>    
     procedure WriteLastErrorCodeLog(const aMethodName: String);
     
     /// <summary>
@@ -342,13 +465,13 @@ Type
 
     /// <summary>
     ///   Gets or sets the speed parameter for PTZ operations.
-    /// </summary>
-    property Speed                   : Byte                read GetSpeed                 write SetSpeed;
+    /// </summary>                                          
+    property Speed                   : Byte                   read GetSpeed                              write SetSpeed;
 
     /// <summary>
     ///   Gets or sets the URL of the ONVIF service.
     /// </summary>
-    property Url                     : String              read Furl                     write SetUrl;
+    property Url                     : String                  read Furl                                 write SetUrl;
     
     /// <summary>
     ///   Event handler for writing logs with specific parameters.
@@ -356,7 +479,7 @@ Type
     /// <remarks>
     ///   Use this event to handle log writing with detailed information based on the specified parameters.
     /// </remarks>
-    property OnWriteLog               : TEventWriteLog     read FOnWriteLog              write FOnWriteLog;
+    property OnWriteLog               : TEventWriteLog         read FOnWriteLog                          write FOnWriteLog;
     
     /// <summary>
     ///   Event triggered when retrieving comprehensive ONVIF information through the GetAllInfo method.
@@ -367,7 +490,7 @@ Type
     ///   can respond to the completion of the GetAllInfo operation, allowing for further processing or
     ///   presentation of the obtained ONVIF data.
     /// </remarks>    
-    property OnReadInfoComplete       : TNotifyEvent        read FOnReadInfoComplete            write FOnReadInfoComplete;
+    property OnReadInfoComplete       : TNotifyEvent           read FOnReadInfoComplete                  write FOnReadInfoComplete;
 
     /// <summary>
     ///   Property representing an event handler for the token found in profiles.
@@ -377,7 +500,7 @@ Type
     ///   The assigned handler should be of type TEventTokenFound, allowing customization
     ///   of the default behavior for ONVIF commands related to PTZ tokens.
     /// </remarks>    
-    property OnPTZTokenFound          : TEventTokenFound    read FOnPTZTokenFound                    write FOnPTZTokenFound;   
+    property OnPTZTokenFound          : TEventTokenFound        read FOnPTZTokenFound                    write FOnPTZTokenFound;   
 
     /// <summary>
     ///   Property representing an event handler for the token found in SourceVideo.
@@ -387,7 +510,7 @@ Type
     ///   The assigned handler should be of type TEventTokenFound, allowing customization
     ///   of the default behavior for ONVIF commands related to VideoSource tokens.
     /// </remarks>    
-    property OnSourceiideoTokenFound   : TEventTokenFound   read FOnSourceiideoTokenFound            write FOnSourceiideoTokenFound;       
+    property OnSourceiideoTokenFound   : TEventTokenFound       read FOnSourceiideoTokenFound            write FOnSourceiideoTokenFound;       
 
     /// <summary>
     ///   Gets or sets whether to save the last HTTP response on disk.
@@ -395,7 +518,7 @@ Type
     /// <remarks>
     ///   Set this property to True if you want to save the last HTTP response on disk.
     /// </remarks>
-    property SaveResponseOnDisk       : Boolean            read FSaveResponseOnDisk      write FSaveResponseOnDisk;  
+    property SaveResponseOnDisk       : Boolean                 read FSaveResponseOnDisk                 write FSaveResponseOnDisk;  
 
     /// <summary>
     ///   Gets or sets the file path for storing ONVIF response data on disk default DumpResponse.log
@@ -407,7 +530,7 @@ Type
     ///   device information retrieval or profile creation, may be stored at this location for reference
     ///   or debugging purposes.
     /// </remarks>
-    property PathFileResponseOnDisk   : String             read FPathFileResponseOnDisk  write FPathFileResponseOnDisk;
+    property PathFileResponseOnDisk   : String                   read FPathFileResponseOnDisk             write FPathFileResponseOnDisk;
 
     /// <summary>
     ///   Gets the last HTTP status code received.
@@ -415,7 +538,7 @@ Type
     /// <remarks>
     ///   Use this property to retrieve the last HTTP status code received during communication.
     /// </remarks>    
-    property LastStatusCode           : Integer            read FLastStatusCode;
+    property LastStatusCode           : Integer                  read FLastStatusCode;
     
     /// <summary>
     ///   Gets the last HTTP response received.
@@ -423,12 +546,46 @@ Type
     /// <remarks>
     ///   Use this property to retrieve the last HTTP response received during communication.
     /// </remarks>    
-    property LastResponse             : String             read FLastResponse;  
+    property LastResponse             : String                   read FLastResponse; 
 
+    
+    /// <summary>
+    /// Gets or sets the exclusion request configuration.
+    /// </summary>
+    /// <value>
+    ///   An instance of TExcludeRequest indicating the exclusion preferences for specific information in a request.
+    /// </value>
+    /// <remarks>
+    ///   Use this property to configure the exclusion preferences for specific information in a request.
+    /// </remarks>     
+    property ExcludeReuqest           : TExcludeRequest          read FExcludeReuqest;
+
+    /// <summary>
+    /// Gets the date and time information from the device.
+    /// </summary>
+    /// <value>
+    ///   A TDateTime value representing the date and time information from the device.
+    /// </value>
+    /// <remarks>
+    ///   Use this property to retrieve the date and time information from the device.
+    /// </remarks>    
+    property DateTimeDevice           : TDateTime                read FDateTimeDevice;
+    
     /// <summary>
     ///   Gets information about the ONVIF device.
     /// </summary>
-    property Device                   : TDeviceInformation read FDevice;
+    property Device                   : TDeviceInformation       read FDevice;
+
+    /// <summary>
+    ///   Gets information about the ONVIF NetworkInterface.
+    /// </summary>
+    property NetworkInterface         : TNetworkInterface        read FNetworkInterface;    
+
+    /// <summary>
+    ///   Gets information about the ONVIF SystemDateAndTime.
+    /// </summary>
+    property SystemDateTime           : TONVIFSystemDateAndTime  read FSystemDateTime;    
+
     
     /// <summary>
     ///   Gets the profiles associated with the ONVIF communication.
@@ -436,7 +593,7 @@ Type
     /// <remarks>
     ///   Use this property to retrieve the profiles associated with the ONVIF communication.
     /// </remarks>    
-    property Profiles                 : TProfiles          read FProfiles;  
+    property Profiles                 : TProfiles                read FProfiles;  
     
     /// <summary>
     ///   Represents the ONVIF capabilities of the device.
@@ -444,7 +601,7 @@ Type
     /// <remarks>
     ///   The ONVIF capabilities, including device, events, PTZ, and extension capabilities.
     /// </remarks>     
-    property Capabilities             : TCapabilitiesONVIF read FCapabilities; 
+    property Capabilities             : TCapabilitiesONVIF       read FCapabilities; 
     
     /// <summary>
     ///   Gets the ONVIF Pan-Tilt-Zoom (PTZ) manager for controlling PTZ-related functionalities.
@@ -486,9 +643,11 @@ begin
   inherited Create(nil);
   FSOAPBuilder            := TONVIFSOAPBuilder.Create(aLogin,aPassword);
   FSaveResponseOnDisk     := False;
+  FDateTimeDevice         := 0;
   FPathFileResponseOnDisk := 'DumpResponse.log';
   FIsFixedToken           := not aToken.IsEmpty;
   FPTZ                    := TONVIFPTZManager.Create(self);
+  FExcludeReuqest         := TExcludeRequest.Create;
   FPTZ.Token              := aToken;
   FImaging                := TONVIFImagingManager.Create(self);
   Url                     := aUrl;    // execute setUrl;  
@@ -497,6 +656,7 @@ end;
 
 destructor TONVIFManager.Destroy;
 begin
+  FreeAndNil(FExcludeReuqest);
   FreeAndNil(FSOAPBuilder);
   FreeAndNil(FImaging);
   FreeAndNil(FPTZ);
@@ -509,13 +669,160 @@ begin
     FOnWriteLog(aFunction,aDescription,aLevel,aIsVerboseLog)
 end;
 
+procedure TONVIFManager.ResetSystemDateAndTime;
+begin
+  // Resetta DateTimeType
+  FSystemDateTime.DateTimeType               := String.Empty;
+
+  // Resetta DaylightSavings
+  FSystemDateTime.DaylightSavings            := False;
+
+
+  // Resetta TimeZone
+  FSystemDateTime.TimeZone.TZ                := String.Empty;
+
+  // Resetta UTCDateTime
+  FSystemDateTime.UTCDateTime.Time.Hour      := 0;
+  FSystemDateTime.UTCDateTime.Time.Minute    := 0;
+  FSystemDateTime.UTCDateTime.Time.Second    := 0;
+  FSystemDateTime.UTCDateTime.Date.Year      := 0;
+  FSystemDateTime.UTCDateTime.Date.Month     := 0;
+  FSystemDateTime.UTCDateTime.Date.Day       := 0;
+
+  // Resetta LocalDateTime
+  FSystemDateTime.LocalDateTime.Time.Hour    := 0;
+  FSystemDateTime.LocalDateTime.Time.Minute  := 0;
+  FSystemDateTime.LocalDateTime.Time.Second  := 0;
+  FSystemDateTime.LocalDateTime.Date.Year    := 0;
+  FSystemDateTime.LocalDateTime.Date.Month   := 0;
+  FSystemDateTime.LocalDateTime.Date.Day     := 0;
+end;
+
+function TONVIFManager.GetRecording:Boolean;
+var LResultStr : String;
+begin
+
+  {TODO -parser XML and structure}
+  Result := ExecuteRequest(atMedia,'TONVIFManager.GetRecording',FSOAPBuilder.PrepareGetRecording, LResultStr);
+  if Result then
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        DoWriteLog('TONVIFManager.GetRecording',LResultStr,tpLivXMLResp,true);
+    {TSI:IGNORE OFF}
+    {$ENDREGION}  
+  end;
+end;
+
+function TONVIFManager.GetSystemDateTime:Boolean;
+CONST MAX_SEC_TOLERANCE = 60;
+var LResultStr : String;
+    LBodyNode  : IXMLNode;
+    LNodeTmp1  : IXMLNode;
+    LNodeTmp2  : IXMLNode;    
+begin
+  ResetSystemDateAndTime;
+  Result := ExecuteRequest(atDeviceService,'TONVIFManager.GetSystemDateTime',FSOAPBuilder.PrepareGetSystemDateTimeRequest, LResultStr);
+
+  if Result then
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        DoWriteLog('TONVIFManager.GetSystemDateTime',LResultStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    
+    LBodyNode := GetBodyNode(LResultStr);
+    if not Assigned(LBodyNode) then Exit;
+    
+    LBodyNode                       := TONVIFXMLUtils.RecursiveFindNode(LBodyNode, 'SystemDateAndTime');
+    FSystemDateTime.DateTimeType    := TONVIFXMLUtils.GetChildNodeValue(LBodyNode, 'DateTimeType');
+    FSystemDateTime.DaylightSavings := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LBodyNode, 'DaylightSavings'),False); 
+
+    // TimeZone
+    LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LBodyNode, 'TimeZone');
+    if Assigned(LNodeTmp1) then
+      FSystemDateTime.TimeZone.TZ := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1, 'TZ');
+
+    // UTCDateTime
+    LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LBodyNode, 'UTCDateTime');
+    if Assigned(LNodeTmp1) then
+    begin
+
+      LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1, 'Time');
+      if Assigned(LNodeTmp2) then
+      begin
+        FSystemDateTime.UTCDateTime.Time.Hour   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Hour'), 0);
+        FSystemDateTime.UTCDateTime.Time.Minute := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Minute'), 0);
+        FSystemDateTime.UTCDateTime.Time.Second := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Second'), 0);
+      end;
+      
+      LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1, 'Date');      
+      if Assigned(LNodeTmp2) then
+      begin
+        FSystemDateTime.UTCDateTime.Date.Year  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Year'), 0);
+        FSystemDateTime.UTCDateTime.Date.Month := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Month'), 0);
+        FSystemDateTime.UTCDateTime.Date.Day   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Day'), 0);
+      end;
+    end;
+
+    // LocalDateTime
+    LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LBodyNode, 'LocalDateTime');
+    if Assigned(LNodeTmp1) then
+    begin
+
+      LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1, 'Time');    
+      if Assigned(LNodeTmp2) then
+      begin
+
+        FSystemDateTime.LocalDateTime.Time.Hour   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Hour'), 0);
+        FSystemDateTime.LocalDateTime.Time.Minute := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Minute'), 0);
+        FSystemDateTime.LocalDateTime.Time.Second := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Second'), 0);
+      end;
+      
+      LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1, 'Date');            
+      if Assigned(LNodeTmp2) then
+      begin
+        FSystemDateTime.LocalDateTime.Date.Year   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Year'), 0);
+        FSystemDateTime.LocalDateTime.Date.Month  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Month'), 0);
+        FSystemDateTime.LocalDateTime.Date.Day    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Day'), 0);
+      end;
+
+      FDateTimeDevice := EncodeDate(FSystemDateTime.LocalDateTime.Date.Year, FSystemDateTime.LocalDateTime.Date.Month, FSystemDateTime.LocalDateTime.Date.Day) +
+                         EncodeTime(FSystemDateTime.LocalDateTime.Time.Hour, FSystemDateTime.LocalDateTime.Time.Minute, FSystemDateTime.LocalDateTime.Time.Second, 0);
+
+      FSOAPBuilder.DateTimeDevice         := FDateTimeDevice;
+      FSOAPBuilder.DeviceDifferenceSec    := SecondsBetween(Now,FDateTimeDevice);
+                              
+      {$REGION 'Log'}
+      {TSI:IGNORE ON}
+          DoWriteLog('TONVIFManager.GetSystemDateTime',Format('Date time device [%s]',[DateTimeToStr(FDateTimeDevice)]),tpLivInfo);      
+      {TSI:IGNORE OFF}
+      {$ENDREGION}   
+      if FSOAPBuilder.DeviceDifferenceSec > MAX_SEC_TOLERANCE then
+      begin
+        {$REGION 'Log'}
+        {TSI:IGNORE ON}      
+          DoWriteLog('TONVIFManager.GetSystemDateTime', Format('Misalignment between date time of device and date time of PC. Device datetime: %s, PC date time: %s', [DateTimeToStr(dateTimeDevice), DateTimeToStr(Now)]), tpLivWarning);                      
+        {TSI:IGNORE OFF}
+        {$ENDREGION}   
+      end;
+    end;
+  end;
+end;
+
 procedure TONVIFManager.ReadInfo;
 begin
-  {TODO get system date time to be use for password? }
   Try
+    GetSystemDateTime;
     if GetCapabilities then
-    begin
-      GetDeviceInformation;
+    begin    
+      if not FExcludeReuqest.DeveficeInformation then      
+        GetDeviceInformation;
+      if not FExcludeReuqest.NetworkInterface then      
+        GetNetworkInterfaces;      
+      if not FExcludeReuqest.RecordingList then              
+        GetRecording;
       GetProfiles;
     end;
   Finally
@@ -561,6 +868,17 @@ end;
 procedure TONVIFManager.SetTokenImagingByPTZToken;
 var I: Integer;
 begin
+
+  if FCapabilities.Imaging.XAddr.Trim.IsEmpty then
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        DoWriteLog('TONVIFManager.SetTokenImagingByPTZToken','Imaging not supported by camera',tpLivInfo);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+     Exit;
+  end;
+  
   {$REGION 'Log'}
   {TSI:IGNORE ON}
       DoWriteLog('TONVIFManager.SetTokenImagingByPTZToken',Format('Search PTZ Token  [%s]',[PTZ.Token.Trim]),tpLivInfo,true);      
@@ -662,19 +980,43 @@ CONST
 
 Var LUri: TIdURI;
 begin
-  Result := String.Empty;
-  
-  LUri := TIdURI.Create(FUrl);
-  try
-    case aUrlType of
-      atDeviceService: LUri.Document := URL_DEVICE_SERVICE;
-      atMedia        : LUri.Document := URL_MEDIA;
-      atPtz          : LUri.Document := URL_PTZ_SERVICE;
-      atImaging      : LUri.Document := URL_IMAGING;
+
+  case aUrlType of
+      atMedia        : 
+        begin
+          if not FCapabilities.Media.XAddr.Trim.IsEmpty then          
+            Result := FCapabilities.Media.XAddr.Trim;
+        end;
+      atPtz          : 
+        begin
+          if not FCapabilities.PTZ.XAddr.Trim.IsEmpty then          
+            Result := FCapabilities.PTZ.XAddr.Trim;
+        end;
+
+      atImaging      : 
+        begin
+          if not FCapabilities.Imaging.XAddr.Trim.IsEmpty then          
+            Result := FCapabilities.Imaging.XAddr.Trim;
+        end;
+
+  else
+    Result := String.Empty;
+  end;
+
+  if Result.Trim.IsEmpty then
+  begin
+    LUri := TIdURI.Create(FUrl);
+    try
+      case aUrlType of
+        atDeviceService: LUri.Document := URL_DEVICE_SERVICE;
+        atMedia        : LUri.Document := URL_MEDIA;
+        atPtz          : LUri.Document := URL_PTZ_SERVICE;
+        atImaging      : LUri.Document := URL_IMAGING;
+      end;
+      Result := LUri.Uri;                                  
+    finally
+      FreeAndNil(LUri);
     end;
-    Result := LUri.Uri;                                  
-  finally
-    FreeAndNil(LUri);
   end;
 end;
 
@@ -690,6 +1032,120 @@ begin
   Result := TONVIFXMLUtils.GetSoapBody(LXMLDoc.DocumentElement);  
 end;
 
+function TONVIFManager.GetNetworkInterfaces: Boolean;
+var LResultStr         : String;
+    LNetworkNode       : IXMLNode;
+    LNodeTmp1          : IXMLNode;
+    LNodeTmp2          : IXMLNode;  
+    LNodeTmp3          : IXMLNode;  
+    LBodyNode          : IXMLNode;  
+begin
+  ResetNetworkInterface;
+  Result := ExecuteRequest(atDeviceService,'TONVIFManager.GetNetworkInterfaces',FSOAPBuilder.PrepareGetNetworkInterfaceRequest, LResultStr);
+
+  if Result then
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        DoWriteLog('TONVIFManager.GetNetworkInterfaces',LResultStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    
+    LBodyNode := GetBodyNode(LResultStr);
+    if not Assigned(LBodyNode) then Exit;
+    
+    LNetworkNode  := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'NetworkInterfaces');
+
+    if Assigned(LNetworkNode) then
+    begin
+      FNetworkInterface.Token   := TONVIFXMLUtils.GetAttribute(LNetworkNode,'token');
+      FNetworkInterface.Enabled := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNetworkNode,'Enabled'),False);
+
+      {Info}
+      LNodeTmp1                 := TONVIFXMLUtils.RecursiveFindNode(LNetworkNode,'Info');
+      if Assigned(LNodeTmp1) then
+      begin
+        FNetworkInterface.Info.Name     := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Name');
+        FNetworkInterface.Info.HwAddress:= TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'HwAddress');
+        FNetworkInterface.Info.MTU      := StrToIntDef( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MTU'),-1);
+      end;
+
+      {Link}
+      LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LNetworkNode,'Link');
+      if Assigned(LNodeTmp1) then
+      begin
+        FNetworkInterface.Link.InterfaceType := StrToIntDef( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'InterfaceType'),-1);
+
+        LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'AdminSettings');
+        if Assigned(LNodeTmp2) then
+        begin
+          FNetworkInterface.Link.AdminSettings.AutoNegotiation  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'AutoNegotiation'),False);
+          FNetworkInterface.Link.AdminSettings.Duplex           := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Duplex');
+          FNetworkInterface.Link.AdminSettings.Speed            := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Speed'),-1);
+        end;
+        
+        LNodeTmp2  := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'OperSettings');
+        if Assigned(LNodeTmp2) then
+        begin
+          FNetworkInterface.Link.OperSettings.AutoNegotiation   := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'AutoNegotiation'),False);
+          FNetworkInterface.Link.OperSettings.Duplex            := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Duplex');
+          FNetworkInterface.Link.OperSettings.Speed             := StrToIntDef( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Speed'),-1);
+        end;
+      end;    
+
+      {IP4}
+      LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LNetworkNode,'IPv4');
+
+      if Assigned(LNodeTmp1) then
+      begin
+        FNetworkInterface.IPv4.Enabled := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Enabled'),False);
+        
+        LNodeTmp2                      := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Config');
+        if Assigned(LNodeTmp2) then
+        begin
+          LNodeTmp3 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp2,'Manual');
+          if Assigned(LNodeTmp3) then
+          begin
+            FNetworkInterface.IPv4.Config.Manual.Address      := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp3,'Address');
+            FNetworkInterface.IPv4.Config.Manual.PrefixLength := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp3,'PrefixLength'),-1);
+          end;
+          FNetworkInterface.IPv4.Config.DHCP  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'DHCP'),False);
+        end;
+      end;
+
+      {IP6}
+      LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LNetworkNode,'IPv6');
+
+      if Assigned(LNodeTmp1) then
+      begin
+        FNetworkInterface.IPv6.Enabled := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Enabled'),False);
+        
+        LNodeTmp2                      := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Config');
+        if Assigned(LNodeTmp2) then
+        begin
+          LNodeTmp3 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp2,'LinkLocal');
+          if Assigned(LNodeTmp3) then
+          begin
+            FNetworkInterface.IPv6.Config.LinkLocal.Address      := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp3,'Address');
+            FNetworkInterface.IPv6.Config.LinkLocal.PrefixLength := StrToIntDef( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp3,'PrefixLength'),-1);
+          end;
+          
+          LNodeTmp3 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp2,'FromDHCP');
+          if Assigned(LNodeTmp3) then
+          begin
+            FNetworkInterface.IPv6.Config.FromDHCP.Address      := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp3,'Address');
+            FNetworkInterface.IPv6.Config.FromDHCP.PrefixLength := StrToIntDef( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp3,'PrefixLength'),-1);
+          end;
+          FNetworkInterface.IPv6.Config.AcceptRouterAdvert  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'AcceptRouterAdvert'),False);
+          FNetworkInterface.IPv6.Config.DHCP                := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'DHCP');          
+        end;
+      end;      
+    end;
+  end
+  else
+    WriteLastErrorCodeLog('TONVIFManager.GetNetworkInterfaces');
+end;
+
 function TONVIFManager.GetCapabilities: Boolean;
 var LResultStr         : String;
     LCapabilitieNode   : IXMLNode;
@@ -697,7 +1153,13 @@ var LResultStr         : String;
     LNodeTmp2          : IXMLNode;  
     LBodyNode          : IXMLNode;  
     I                  : Integer;
-    X                  : Integer;    
+    X                  : Integer; 
+    Z                  : Integer;
+    LCountAux          : Integer;
+    LCountAuxValue     : Integer;
+    LFoundAux          : Boolean;
+    LTmpStr            : string;  
+    LTmpStrSplit       : string;     
 begin
   Result := false;
 
@@ -714,7 +1176,15 @@ begin
     
     LBodyNode := GetBodyNode(LResultStr);
     if not Assigned(LBodyNode) then Exit;
-    
+    LCapabilitieNode  := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Analytics');
+
+    if Assigned(LCapabilitieNode) then
+    begin
+      FCapabilities.Analytics.XAddr                  := TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'XAddr');
+      FCapabilities.Analytics.AnalyticsModuleSupport := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'AnalyticsModuleSupport'),False);
+      FCapabilities.Analytics.RuleSupport            := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'RuleSupport'),False);    
+    end;
+
     LCapabilitieNode  := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Device');
 
     if Assigned(LCapabilitieNode) then
@@ -732,10 +1202,16 @@ begin
         LNodeTmp2                                      := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Extension');
         if Assigned(LNodeTmp2) then      
         begin  
-          FCapabilities.Device.Network.Extension.Dot11Configuration := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Dot11Configuration'),False);
+          FCapabilities.Device.Network.Extension.Dot11Configuration   := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Dot11Configuration'),False);
+          FCapabilities.Device.Network.Extension.DHCPv6               := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'DHCPv6'),False);
+          FCapabilities.Device.Network.Extension.Dot1XConfigurations  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Dot1XConfigurations'),-1);
+
           for I := 0 to LNodeTmp2.ChildNodes.Count -1 do
           begin
-            if not SameText(LNodeTmp2.ChildNodes[I].DOMNode.localName,'Dot11Configuration') then
+            if not SameText(LNodeTmp2.ChildNodes[I].DOMNode.localName,'Dot11Configuration') and
+               not SameText(LNodeTmp2.ChildNodes[I].DOMNode.localName,'DHCPv6')  and
+               not SameText(LNodeTmp2.ChildNodes[I].DOMNode.localName,'Dot1XConfigurations') 
+            then
               {$REGION 'Log'}
               {TSI:IGNORE ON}
                   DoWriteLog('TONVIFManager.GetCapabilities',Format('Unsupported node name [%s]',[LNodeTmp2.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
@@ -755,13 +1231,86 @@ begin
         FCapabilities.Device.System.SystemBackup            := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'SystemBackup'),False);
         FCapabilities.Device.System.SystemLogging           := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'SystemLogging'),False);
         FCapabilities.Device.System.FirmwareUpgrade         := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'FirmwareUpgrade'),False);
-        
-        LNodeTmp2                                           := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'SupportedVersions');
+        LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Extension');      
         if Assigned(LNodeTmp2) then
-        begin        
-          FCapabilities.Device.System.SupportedVersions.Major := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Major'),-1);
-          FCapabilities.Device.System.SupportedVersions.Minor := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'Minor'),-1);
+        begin            
+          FCapabilities.Device.System.Extension.HttpFirmwareUpgrade    := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'HttpFirmwareUpgrade'),False);         
+          FCapabilities.Device.System.Extension.HttpSystemBackup       := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'HttpSystemBackup'),False);          
+          FCapabilities.Device.System.Extension.HttpSystemLogging      := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'HttpSystemLogging'),False);          
+          FCapabilities.Device.System.Extension.HttpSupportInformation := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2,'HttpSupportInformation'),False);
         end;
+
+        LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'SupportedVersions');
+        if Assigned(LNodeTmp2) then
+        begin  
+          SetLength(FCapabilities.Device.System.SupportedVersions,LNodeTmp2.ChildNodes.Count div 2);
+          I := 0;
+          while I < LNodeTmp2.ChildNodes.Count-1 do
+          begin
+                
+            FCapabilities.Device.System.SupportedVersions[I].Major := StrToIntDef(LNodeTmp2.ChildNodes[I].Text,-1);
+            FCapabilities.Device.System.SupportedVersions[I].Minor := StrToIntDef(LNodeTmp2.ChildNodes[I+1].Text,-1);
+            Inc(I,2);
+          end;
+        end;
+
+        LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LCapabilitieNode,'IO');      
+
+        if Assigned(LNodeTmp1) then
+        begin            
+          FCapabilities.Device.IO.InputConnectors    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'InputConnectors'),-1);         
+          FCapabilities.Device.IO.RelayOutputs       := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'RelayOutputs'),-1);          
+          LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Extension');      
+          if Assigned(LNodeTmp2) then
+          begin            
+            LCountAux                       := 0;
+            for X := 0 to LNodeTmp2.ChildNodes.Count -1 do
+            begin  
+              if SameText(LNodeTmp2.ChildNodes[X].DOMNode.localName,'AuxiliaryCommands') then
+              begin
+                LFoundAux    := False;        
+                LTmpStr      := LNodeTmp2.ChildNodes[X].Text.Replace('tt:',String.Empty,[rfIgnoreCase]);
+                if not LTmpStr.Trim.IsEmpty then
+                begin
+                  LTmpStrSplit := LTmpStr;
+                  LCountAux    := Length(FCapabilities.Device.IO.Extension.AuxiliaryCommands);
+
+                  if LTmpStr.Contains('|') then
+                    LTmpStrSplit := LTmpStr.Split(['|'])[0];
+            
+                  for Z := 0 to LCountAux -1 do
+                  begin
+                    if SameText(FCapabilities.Device.IO.Extension.AuxiliaryCommands[Z].Name,LTmpStrSplit) then
+                    begin
+                      LFoundAux      := True;
+                      LCountAuxValue := Length(FCapabilities.Device.IO.Extension.AuxiliaryCommands[Z].Values);
+                      SetLength(FCapabilities.Device.IO.Extension.AuxiliaryCommands[Z].Values,LCountAuxValue+1);
+                      if LTmpStr.Contains('|') then            
+                        FCapabilities.Device.IO.Extension.AuxiliaryCommands[Z].Values[LCountAuxValue] := LTmpStr.Split(['|'])[1]
+                      else
+                        FCapabilities.Device.IO.Extension.AuxiliaryCommands[Z].Values[LCountAuxValue] := LTmpStrSplit;
+                      Break;
+                    end
+                  end;
+          
+                  if not LFoundAux then
+                  begin
+                    SetLength(FCapabilities.Device.IO.Extension.AuxiliaryCommands,LCountAux+1); 
+                    FCapabilities.Device.IO.Extension.AuxiliaryCommands[LCountAux].Name := LTmpStrSplit;
+                         
+                    SetLength(FCapabilities.Device.IO.Extension.AuxiliaryCommands[LCountAux].Values,1);        
+                    if LTmpStr.Contains('|') then            
+                      FCapabilities.Device.IO.Extension.AuxiliaryCommands[LCountAux].Values[0] :=  LTmpStr.Split(['|'])[1]              
+                    else
+                      FCapabilities.Device.IO.Extension.AuxiliaryCommands[LCountAux].Values[0]:= LTmpStr;        
+                  end;
+                end
+              end;
+            end;
+
+          end;
+        end;
+        
       end;    
 
       {event}
@@ -788,6 +1337,11 @@ begin
           FCapabilities.Media.StreamingCapabilities.RTP_RTSP_TCP := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'RTP_RTSP_TCP'),False);    
         end;
       end;
+      {Imaging}
+      LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'Imaging'); 
+      if Assigned(LCapabilitieNode) then      
+        FCapabilities.Imaging.XAddr := TONVIFXMLUtils.GetChildNodeValue(LCapabilitieNode,'XAddr');
+
       {PTZ}
       LCapabilitieNode := TONVIFXMLUtils.RecursiveFindNode(LBodyNode,'PTZ'); 
       if Assigned(LCapabilitieNode) then      
@@ -904,7 +1458,7 @@ var LResultStr         : String;
     
 begin
   ResetProfiles;
-  Result := ExecuteRequest(atPtz,'TONVIFManager.GetProfiles',FSOAPBuilder.PrepareGetProfilesRequest, LResultStr);
+  Result := ExecuteRequest(atDeviceService,'TONVIFManager.GetProfiles',FSOAPBuilder.PrepareGetProfilesRequest, LResultStr);
 
   if Result then
   begin
@@ -1010,13 +1564,13 @@ begin
         if Assigned(LChildNodeRoot) then
         begin
           LProfile.PTZConfiguration.token := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
-
-          if ( LProfile.PTZConfiguration.token = 'PTZToken') or
+          LNewToken := LProfile.token;
+       {   if ( LProfile.PTZConfiguration.token = 'PTZToken') or
              ( LProfile.PTZConfiguration.token = 'PtzConf1')   // How can I identify without using constants?
           then
-            LNewToken := LProfile.token
+            
           else
-            LNewToken := LProfile.PTZConfiguration.token;
+            LNewToken := LProfile.PTZConfiguration.token;}
             
           if Assigned(FOnPTZTokenFound) then
             FOnPTZTokenFound(LProfile.name,LNewToken,LSetForDefault);
@@ -1194,9 +1748,24 @@ begin
   Try
     LOutStream := TStringStream.Create;
     try
-      Result        := ExecuteRequest(LUrl, LInStream, LOutStream);
-      aAnswer       := LOutStream.DataString;  
-      FLastResponse := aAnswer; 
+      Try
+        Result        := ExecuteRequest(LUrl, LInStream, LOutStream);
+        
+      Except on E : Exception do
+        begin
+          FLastStatusCode := ONVIF_ERROR_DELPHI_EXCEPTION;
+          FLastResponse   := e.Message;
+          {$REGION 'Log'}
+          {TSI:IGNORE ON}
+              DoWriteLog(aMethodName,Format('ExecuteRequest: ULR [%s] Generic exception [%s] response [%s]',[LUrl,e.Message,aAnswer]),tpLivException);      
+          {TSI:IGNORE OFF}
+          {$ENDREGION}           
+        end;
+      End;    
+      
+      aAnswer := LOutStream.DataString; 
+      if FLastStatusCode <> ONVIF_ERROR_DELPHI_EXCEPTION then 
+        FLastResponse := aAnswer; 
 
       if not Result then
       begin
@@ -1211,7 +1780,7 @@ begin
               begin
                 {$REGION 'Log'}
                 {TSI:IGNORE ON}
-                    DoWriteLog('TONVIFManager.ExecuteRequest',Format('URL [%s] Error [%d] response [%s]',[FUrl,FLastStatusCode,aAnswer]),tpLivError);      
+                    DoWriteLog(aMethodName,Format('ExecuteRequest: URL [%s] Error [%d] response [%s]',[LUrl,FLastStatusCode,aAnswer]),tpLivError);      
                 {TSI:IGNORE OFF}
                 {$ENDREGION}
               end;
@@ -1220,7 +1789,7 @@ begin
         Except on E : Exception do
           {$REGION 'Log'}
           {TSI:IGNORE ON}
-              DoWriteLog('TONVIFManager.ExecuteRequest',Format('ULR [%s] [Parser XML response exception [%s], Execute request Error [%d] response [%s]',[FUrl,e.Message,FLastStatusCode,aAnswer]),tpLivError);      
+              DoWriteLog(aMethodName,Format('ExecuteRequest: ULR [%s] [Parser XML response exception [%s], Execute request Error [%d] response [%s]',[LUrl,e.Message,FLastStatusCode,aAnswer]),tpLivError);      
           {TSI:IGNORE OFF}
           {$ENDREGION}           
         End;          
@@ -1240,33 +1809,20 @@ function TONVIFManager.ExecuteRequest(const aAddr: String; const aInStream, aOut
 Var LHTTPClient: THttpClient;
     LResponse  : IHTTPResponse;
 begin  
-  Result      := False;
   LHTTPClient := THttpClient.Create;
   Try
     With LHTTPClient do
     begin
-      Try
-        CustHeaders.Clear;
-        AllowCookies          := True;
-        HandleRedirects       := True;
-        AutomaticDecompression:= [THTTPCompressionMethod.Deflate, THTTPCompressionMethod.GZip, THTTPCompressionMethod.Brotli, THTTPCompressionMethod.Any];
-        Accept                := 'gzip, deflate';    
-        ContentType           := 'application/soap+xml; charset=utf-8;';          
-        ResponseTimeout       := 300000;
-        LResponse             := Post(aAddr, aInStream,aOutStream);
-        FLastStatusCode       := LResponse.StatusCode;
-        Result                := (FLastStatusCode div 100) = 2;
-      Except on E:Exception do
-        begin
-          FLastStatusCode := ONVIF_ERROR_DELPHI_EXCEPTION;
-          FLastResponse   := E.Message;
-          {$REGION 'Log'}
-          {TSI:IGNORE ON}
-              DoWriteLog('TONVIFManager.ExecuteRequest',Format(' Addr [%s] exception [%s] ',[aAddr,e.Message]),tpLivException);
-          {TSI:IGNORE OFF}
-          {$ENDREGION}
-        end;
-      End;        
+      CustHeaders.Clear;
+      AllowCookies          := True;
+      HandleRedirects       := True;
+      AutomaticDecompression:= [THTTPCompressionMethod.Deflate, THTTPCompressionMethod.GZip, THTTPCompressionMethod.Brotli, THTTPCompressionMethod.Any];
+      Accept                := 'gzip, deflate';    
+      ContentType           := 'application/soap+xml; charset=utf-8;';          
+      ResponseTimeout       := 300000;
+      LResponse             := Post(aAddr, aInStream,aOutStream);
+      FLastStatusCode       := LResponse.StatusCode;
+      Result                := (FLastStatusCode div 100) = 2;
     end;
   finally      
     FreeAndNil(LHTTPClient)
@@ -1278,8 +1834,37 @@ begin
   ResetDevice;
   ResetProfiles;
   ResetCapabilities;
+  ResetNetworkInterface;
   FLastStatusCode := 0;
   FLastResponse   := String.Empty;    
+end;
+
+Procedure TONVIFManager.ResetNetworkInterface;
+begin
+  FNetworkInterface.Token                              := String.Empty;
+  FNetworkInterface.Enabled                            := False;
+  FNetworkInterface.Info.Name                          := String.Empty;
+  FNetworkInterface.Info.HwAddress                     := String.Empty;
+  FNetworkInterface.Info.MTU                           := -1;
+  FNetworkInterface.Link.AdminSettings.AutoNegotiation := False;
+  FNetworkInterface.Link.AdminSettings.Speed           := -1;
+  FNetworkInterface.Link.AdminSettings.Duplex          := String.Empty;
+  FNetworkInterface.Link.OperSettings.AutoNegotiation  := False;
+  FNetworkInterface.Link.OperSettings.Duplex           := String.Empty;
+  FNetworkInterface.Link.OperSettings.Speed            := -1;
+  FNetworkInterface.Link.InterfaceType                 := -1;
+  FNetworkInterface.IPv4.Enabled                       := False;
+  FNetworkInterface.IPv4.Config.Manual.Address         := String.Empty;  
+  FNetworkInterface.IPv4.Config.Manual.PrefixLength    := -1;
+  FNetworkInterface.IPv4.Config.DHCP                   := False;
+  FNetworkInterface.IPv6.Enabled                       := False;
+  FNetworkInterface.IPv6.Config.AcceptRouterAdvert     := False;
+  FNetworkInterface.IPv6.Config.DHCP                   := String.Empty;   
+  FNetworkInterface.IPv6.Config.LinkLocal.Address      := String.Empty; 
+  FNetworkInterface.IPv6.Config.LinkLocal.PrefixLength := -1;
+  FNetworkInterface.IPv6.Config.FromDHCP.Address       := String.Empty; 
+  FNetworkInterface.IPv6.Config.FromDHCP.PrefixLength  := -1;
+
 end;
 
 Procedure TONVIFManager.ResetProfiles;
@@ -1299,6 +1884,12 @@ end;
 
 procedure TONVIFManager.ResetCapabilities;
 begin
+  {Analytics}
+  FCapabilities.Analytics.XAddr                                      := String.Empty;
+  FCapabilities.Analytics.RuleSupport                                := False;
+  FCapabilities.Analytics.AnalyticsModuleSupport                     := False;
+
+  
   {device}
   FCapabilities.Device.XAddr                                         := String.Empty;
   FCapabilities.Device.Network.IPFilter                              := False;
@@ -1306,19 +1897,32 @@ begin
   FCapabilities.Device.Network.IPVersion6                            := False;   
   FCapabilities.Device.Network.DynDNS                                := False;  
   FCapabilities.Device.Network.Extension.Dot11Configuration          := False;          
+  FCapabilities.Device.Network.Extension.DHCPv6                      := False;          
+  FCapabilities.Device.Network.Extension.Dot1XConfigurations         := -1;              
   FCapabilities.Device.System.DiscoveryResolve                       := False;
   FCapabilities.Device.System.DiscoveryBye                           := False;
   FCapabilities.Device.System.RemoteDiscovery                        := False;
   FCapabilities.Device.System.SystemBackup                           := False;
   FCapabilities.Device.System.SystemLogging                          := False;        
   FCapabilities.Device.System.FirmwareUpgrade                        := False;          
-  FCapabilities.Device.System.SupportedVersions.Major                := -1;
-  FCapabilities.Device.System.SupportedVersions.Minor                := -1;  
+  FCapabilities.Device.System.Extension.HttpFirmwareUpgrade          := False;          
+  FCapabilities.Device.System.Extension.HttpSystemBackup             := False;          
+  FCapabilities.Device.System.Extension.HttpSystemLogging            := False;          
+  FCapabilities.Device.System.Extension.HttpSupportInformation       := False;          
+  SetLength(FCapabilities.Device.System.SupportedVersions,0);
+
+  FCapabilities.Device.IO.InputConnectors                            := -1;
+  FCapabilities.Device.IO.RelayOutputs                               := -1;
+  SetLength(FCapabilities.Device.IO.Extension.AuxiliaryCommands,0);
+
   {event}
   FCapabilities.Events.XAddr                                         := String.Empty;
   FCapabilities.Events.WSSubscriptionPolicySupport                   := False;
   FCapabilities.Events.WSPullPointSupport                            := False;
   FCapabilities.Events.WSPausableSubscriptionManagerInterfaceSupport := False; 
+  {PTZ}
+  FCapabilities.Imaging.XAddr                                        := String.Empty;
+
   {Media}
   FCapabilities.Media.XAddr                                          := String.Empty;
   FCapabilities.Media.StreamingCapabilities.RTPMulticast             := False;

@@ -8,7 +8,9 @@ Device Information: Effortlessly retrieve and manage information about connected
 
 Profiles: Seamlessly handle ONVIF profiles, ensuring compatibility and easy integration.
 
-Capabilities: Access and manage device capabilities to optimize functionality.
+Capabilities: Access device capabilities.
+
+NetworkInterface: Access to network interface information.
 
 The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for controlling camera movement.
 
@@ -23,6 +25,8 @@ The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for cont
 - **GoHome Position:** The library includes a GoHome position feature, allowing the camera to return to a predefined home position.
 
 - **SetHomePosition:** Users can set a custom home position for the camera, providing flexibility in defining a default reference point.
+
+- **Auxiliary commands:** Users can set auxiliary command if supported by camera , like Wirer and IRLamp ecc ecc.
 
 **Note:** As of now, only continuous movement (ContinuousMove) is supported.
 
@@ -50,8 +54,7 @@ with your actual credentials and ONVIF device URL.
 comprehensive English documentation set is embedded directly in the source code in XML format, providing an easily accessible reference for developers
 
 You can find an executable in the Demo\Bin folder with the implemented functions ready for testing.
-![image](https://github.com/amancini/ONVIF_WDSL/assets/11525545/5d6bd4db-4d88-4b2d-b04d-9f372507bbdd)
-
+![image](https://github.com/amancini/ONVIF_WDSL/assets/11525545/5c406b53-0a1b-4437-9102-3f7784a978d7)
 
 # Contributions
 Contributions are welcome! If you encounter any issues, have suggestions for improvements, or want to contribute new features, please check our Contribution Guidelines.

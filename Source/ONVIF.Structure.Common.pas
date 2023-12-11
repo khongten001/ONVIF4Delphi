@@ -134,7 +134,20 @@ type
   TAuxiliaryCommand = record
     Name  : String;
     Values: TArray<string>;
-  end;  
+  end; 
+
+  TONVIFProxySettings = Class
+  private
+    FAddress : string;
+    FPort    : Integer;
+    FUsername: string;
+    FPassword: string;
+  public
+    property Address  : String  read FAddress  write FAddress;
+    property Port     : Integer read FPort     write FPort;
+    property Username : String  read FUsername write FUsername;
+    property Password : String  read FPassword write FPassword;            
+  end;   
 
 implementation
 

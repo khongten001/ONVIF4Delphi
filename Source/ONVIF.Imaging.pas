@@ -26,6 +26,9 @@ You may use/change/modify the component under 1 conditions:
 {*******************************************************************************}
 
 unit ONVIF.Imaging;
+{specs 
+https://www.onvif.org/specs/srv/img/ONVIF-Imaging-Service-Spec.pdf
+}  
 
 interface
 
@@ -34,8 +37,28 @@ uses
   System.Math, ONVIF.Structure.Imaging, System.Classes, ONVIF.Intf, System.SysUtils,
   Soap.XSBuiltIns;
   
+  {TODO LIST
+
+         -- Saturation, contrast ecc
+         -- IRCut 
+         -- IRIS 
+         -- Focus
+              -- Relative
+         -- GetServiceCapabilities or in Device ? 
+            --- Flip: Indicates whether or not E-Flip is supported.
+            --- Reverse: Indicates whether or not reversing of PT control direction is supported.
+            --- GetCompatibleConfigurations: Indicates the support for GetCompatibleConfigurations command.
+            --- MoveStatus Indicates that the PTZStatus includes MoveStatus information.
+            --- StatusPosition Indicates that the PTZStatus includes Position information.         
+         others -->             
+  }
+
 type
-  TONVIFImagingManager = class;
+  TONVIFImagingManager        = class;
+
+  TOnGetFocusSettings         = procedure (const aFocusMode:TImagingFocusMode;aDefaultSpeed:Integer) of object;    
+  TOnGetIrCutSettings         = procedure (const aIrCutMode:TIrCutFilterMode) of object;      
+  TOnGetFocusAbsoluteLimit    = procedure (const Min,Max,Position:Double;const aStatus,Error:String) of object;      
 
   
   /// <summary>
@@ -85,8 +108,13 @@ type
     FSupportImageStabilization : Boolean;
     FToken                     : String;
     FImagingSettings           : TImagingSettings;
+    FImagingOptions            : TImagingOptions;
     FSupportedInfo             : TSupportedImagingInfo;
     FFocusSettings             : TImagingFocusSettings;
+    FOnGetFocusSettings        : TOnGetFocusSettings;
+    FOnGetFocusAbsoluteLimit   : TOnGetFocusAbsoluteLimit;
+    FOnGetIrCutSettings        : TOnGetIrCutSettings;
+    
     
     /// <summary>    
     //  The capabilities reflect optional functions and functionality of a service. The information is 
@@ -132,14 +160,29 @@ type
     ///  Via this command the current status of the Move operation can be requested. 
     ///  Supported for this command is available if the support for the Move operation is signalled via GetMoveOptions.    
     /// </summary>
-    function GetStatus: Boolean;    
+    function GetStatus(aFireEvent:Boolean): Boolean;    
+
+    /// <summary>    
+    /// This operation gets the valid ranges for the imaging parameters that have device specific 
+    /// ranges. A device implementing the imaging service shall support this command. The 
+    /// command shall return all supported parameters and their ranges such that these can be 
+    /// applied to the SetImagingSettings command.
+    /// For read-only parameters which cannot be modified via the SetImagingSettings command only 
+    /// a single option or identical Min and Max values shall be provided.
+    /// </summary>
+    /// <returns>
+    ///   True if the operation successfully , False otherwise.</returns>  
+    /// </returns>    
+    function GetOptions: Boolean;
+    procedure ResetOptions;
   public
     /// <summary>
     ///   Constructor for initializing a new instance of the Imaging Manager.
     /// </summary>
     /// <param name="aONVIFManager">Reference to the parent ONVIF manager instance.</param>  
     constructor Create(aONVIFManager : IONVIFManager);
-     
+    
+    
     /// <summary>
     ///   Destructor for cleaning up resources.
     /// </summary>     
@@ -181,37 +224,50 @@ type
     /// <summary>
     ///   Property providing access to imaging focus settings.
     /// </summary>    
-    property FocusSettings             : TImagingFocusSettings read FFocusSettings;
+    property FocusSettings             : TImagingFocusSettings         read FFocusSettings;
     
     /// <summary>
     ///   Property providing access to imaging settings.
     /// </summary>    
-    property ImagingSettings           : TImagingSettings      read FImagingSettings;
+    property ImagingSettings           : TImagingSettings              read FImagingSettings;
+
+    
+    /// <summary>
+    ///   Property providing access to imaging Options.
+    /// </summary>    
+    property ImagingOptions            : TImagingOptions               read FImagingOptions;    
+    
 
     /// <summary>
     ///   Property providing access to supported imaging information.
     /// </summary>    
-    property SupportedInfo             : TSupportedImagingInfo read FSupportedInfo; 
+    property SupportedInfo             : TSupportedImagingInfo         read FSupportedInfo; 
 
     /// <summary>
     ///   Property indicating whether image stabilization is supported.
     /// </summary>    
-    property SupportImageStabilization : Boolean               read FSupportImageStabilization;
+    property SupportImageStabilization : Boolean                       read FSupportImageStabilization;
 
     /// <summary>
     ///   Property indicating whether imaging presets are supported.
     /// </summary>    
-    property SupportImagingPresets     : Boolean               read FSupportImagingPresets;    
+    property SupportImagingPresets     : Boolean                       read FSupportImagingPresets;    
     
     /// <summary>
     ///   Gets or sets the token of the VideoSource.
     /// </summary>    
-    property Token                    : String                 read FToken                         write SetToken;        
+    property Token                     : String                        read FToken                          write SetToken; 
+    property OnGetFocusSettings        : TOnGetFocusSettings           read FOnGetFocusSettings             write FOnGetFocusSettings;
+    property OnGetFocusAbsoluteLimit   : TOnGetFocusAbsoluteLimit      read FOnGetFocusAbsoluteLimit        write FOnGetFocusAbsoluteLimit;
+    property OnGetIrCutSettings        : TOnGetIrCutSettings           read FOnGetIrCutSettings             write FOnGetIrCutSettings;    
+
   End;
 
 
 
 implementation
+
+
 
 { TONVIFImagingManager }
 constructor TONVIFImagingManager.Create(aONVIFManager: IONVIFManager);
@@ -241,8 +297,7 @@ begin
     {$ENDREGION}
     LSoapBodyNode  := FONVIFManager.GetBodyNode(LResponseStr);
     if not Assigned(LSoapBodyNode) then Exit;
- 
- 
+  
     LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'ImageStabilization');
     if Assigned(LNodeTmp) then    
       FSupportImageStabilization := StrToBoolDef(LNodeTmp.Text,False);
@@ -255,25 +310,23 @@ end;
 procedure TONVIFImagingManager.ResetImagingSettings;
 begin
   {Focus}
+  FFocusSettings                                 := Default(TImagingFocusSettings);  
   FFocusSettings.Options.Continuous.Speed.Min    := -1;
   FFocusSettings.Options.Continuous.Speed.Max    := -1;
-  FFocusSettings.Options.Continuous.Supported    := False; 
   FFocusSettings.Options.Relative.Speed.Min      := -1;
   FFocusSettings.Options.Relative.Speed.Max      := -1;
-  FFocusSettings.Options.Relative.Supported      := False; 
+  FFocusSettings.Options.Relative.Distance.Min   := -1;
+  FFocusSettings.Options.Relative.Distance.Max   := -1;  
   FFocusSettings.Options.Absolute.Speed.Min      := -1;
   FFocusSettings.Options.Absolute.Speed.Max      := -1;
-  FFocusSettings.Options.Absolute.Supported      := False; 
+  FFocusSettings.Options.Absolute.Position.Min   := -1; 
+  FFocusSettings.Options.Absolute.Position.Max   := -1;   
   FFocusSettings.Status.Position                 := -1;
-  FFocusSettings.Status.MoveStatus               := String.Empty; 
-  FFocusSettings.Status.Error                    := String.Empty; 
-  FSupportImageStabilization                     := False;
-  FSupportImagingPresets                         := False;
-  FImagingSettings.BacklightCompensation         := False;
+  
+  FImagingSettings                               := Default(TImagingSettings);
   FImagingSettings.Brightness                    := -1;
   FImagingSettings.ColorSaturation               := -1;
   FImagingSettings.Contrast                      := -1; 
-  FImagingSettings.Exposure.Mode                 := String.Empty;   
   FImagingSettings.Exposure.MinExposureTime      := -1;
   FImagingSettings.Exposure.MaxExposureTime      := -1;
   FImagingSettings.Exposure.MinIris              := -1;  
@@ -282,19 +335,83 @@ begin
   FImagingSettings.Exposure.MaxGain              := -1;
   FImagingSettings.Exposure.Iris                 := -1;  
   FImagingSettings.Exposure.Gain                 := -1;  
-  FImagingSettings.Focus.AutoFocusMode           := ifmUnknown;
   FImagingSettings.Focus.DefaultSpeed            := -1;
-  FImagingSettings.IrCutFilter                   := icfmUnknown;
   FImagingSettings.Sharpness                     := -1;
-  FImagingSettings.WideDynamicRange.Mode         := String.Empty; 
-  FImagingSettings.WhiteBalance.Mode             := String.Empty;   
-  FImagingSettings.Extension.Defogging.Mode      := String.Empty;   
+  FImagingSettings.WideDynamicRange.YrGain       := -1;
+  FImagingSettings.WideDynamicRange.YbGain       := -1;  
+  FImagingSettings.WhiteBalance.CrGain           := -1;
+  FImagingSettings.WhiteBalance.CbGain           := -1;
   FImagingSettings.Extension.Defogging.Level     := -1;
   FImagingSettings.Extension.NoiseReduction.Level:= -1;   
+  ResetOptions;
+  
+end;
+
+Procedure TONVIFImagingManager.ResetOptions;
+begin
+  // Reset Backlight Compensation options
+  SetLength(FImagingOptions.BacklightCompensation, 0);
+
+  // Reset Brightness options
+  FImagingOptions.Brightness.Min      := -1;
+  FImagingOptions.Brightness.Max      := -1;
+
+  // Reset Color Saturation options
+  FImagingOptions.ColorSaturation.Min := -1;
+  FImagingOptions.ColorSaturation.Max := -1;
+
+  // Reset Contrast options
+  FImagingOptions.Contrast.Min        := -1;
+  FImagingOptions.Contrast.Max        := -1;
+
+  // Reset Exposure options
+  SetLength(FImagingOptions.Exposure.Mode, 0);
+  FImagingOptions.Exposure.MinExposureTime.Min := -1;
+  FImagingOptions.Exposure.MinExposureTime.Max := -1;
+  FImagingOptions.Exposure.MaxExposureTime.Min := -1;
+  FImagingOptions.Exposure.MaxExposureTime.Max := -1;
+  FImagingOptions.Exposure.MaxIris.Min         := -1;
+  FImagingOptions.Exposure.MaxIris.Max         := -1;
+  FImagingOptions.Exposure.ExposureTime.Min    := -1;
+  FImagingOptions.Exposure.ExposureTime.Max    := -1;
+  FImagingOptions.Exposure.Iris.Min            := -1;
+  FImagingOptions.Exposure.Iris.Max            := -1;
+
+  // Reset Focus options
+  SetLength(FImagingOptions.Focus.AutoFocusModes, 0);
+  FImagingOptions.Focus.DefaultSpeed.Min := -1;
+  FImagingOptions.Focus.DefaultSpeed.Max := -1;
+  FImagingOptions.Focus.NearLimit.Min    := -1;
+  FImagingOptions.Focus.NearLimit.Max    := -1;
+  FImagingOptions.Focus.FarLimit.Min     := -1;
+  FImagingOptions.Focus.FarLimit.Max     := -1;
+
+  // Reset IR Cut Filter Modes
+  SetLength(FImagingOptions.IrCutFilterModes, 0);
+
+  // Reset Sharpness options
+  FImagingOptions.Sharpness.Min := -1;
+  FImagingOptions.Sharpness.Max := -1;
+
+  // Reset Wide Dynamic Range options
+  SetLength(FImagingOptions.WideDynamicRange.Mode, 0);
+  FImagingOptions.WideDynamicRange.Level.Min := -1;
+  FImagingOptions.WideDynamicRange.Level.Max := -1;
+
+  // Reset White Balance options
+  SetLength(FImagingOptions.WhiteBalance.Mode, 0);
+  FImagingOptions.WhiteBalance.CrGain := -1;
+  FImagingOptions.WhiteBalance.CbGain := -1;
+
+  // Reset Extension options
+  SetLength(FImagingOptions.Extension.DefoggingOptions.Mode, 0);
+  FImagingOptions.Extension.DefoggingOptions.Level := False;
+  FImagingOptions.Extension.NoiseReductionOptions  := False;
 end;
 
 destructor TONVIFImagingManager.Destroy;
 begin
+  ResetImagingSettings;
   FreeAndNil(FSupportedInfo);
   inherited;
 end;
@@ -377,14 +494,14 @@ begin
 
   Result := FONVIFManager.ExecuteRequest(atPtz,'TONVIFPTZManager.FocusMoveStop',FONVIFManager.GetSOAPBuilder.PrepareImagingStopMoveFocus(FToken), LResultStr);        
   if Result then  
-    GetStatus;  
+    GetStatus(False);  
 end;
 
 Function TONVIFImagingManager.GetMoveOptions:Boolean;
 var LResponseStr       : String;
     LSoapBodyNode      : IXMLNode;
     LMoveOptionNode    : IXMLNode;
-    LNodeSpeed         : IXMLNode;
+    LNodeTmp         : IXMLNode;
 begin
   Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFImagingManager.GetImagingSettings',FONVIFManager.GetSOAPBuilder.PrepareImagingMoveOptions(FToken),LResponseStr);  
   if Result then 
@@ -401,51 +518,164 @@ begin
     LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Relative');
     if Assigned(LMoveOptionNode) then
     begin
-      //FFocusSettings.Options.Relative.Distance     
+
       FFocusSettings.Options.Relative.Supported := True;
-      LNodeSpeed                                := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
-      if Assigned(LNodeSpeed) then
+      LNodeTmp                                  := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
+      if Assigned(LNodeTmp) then
       begin
-        FFocusSettings.Options.Relative.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Min'),-1);  
-        FFocusSettings.Options.Relative.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Max'),-1);
+        FFocusSettings.Options.Relative.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);  
+        FFocusSettings.Options.Relative.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
       end;
+      
+      LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Distance');
+      if Assigned(LNodeTmp) then
+      begin
+        FFocusSettings.Options.Relative.Distance.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);  
+        FFocusSettings.Options.Relative.Distance.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
+      end;      
     end;
 
     LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Absolute');
     if Assigned(LMoveOptionNode) then
     begin
-      //TODO FFocusSettings.Options.Absolute.Position 
+   
       FFocusSettings.Options.Absolute.Supported := True;
-      LNodeSpeed                                := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
-      if Assigned(LNodeSpeed) then
+      LNodeTmp                                  := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
+      if Assigned(LNodeTmp) then
       begin
-        FFocusSettings.Options.Absolute.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Min'),-1);  
-        FFocusSettings.Options.Absolute.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Max'),-1);
+        FFocusSettings.Options.Absolute.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);  
+        FFocusSettings.Options.Absolute.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
       end;
+
+      LNodeTmp := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Position');
+      if Assigned(LNodeTmp) then
+      begin
+        FFocusSettings.Options.Absolute.Position.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);  
+        FFocusSettings.Options.Absolute.Position.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
+      end;      
     end;
 
     LMoveOptionNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'Continuous');
     if Assigned(LMoveOptionNode) then
     begin
       FFocusSettings.Options.Continuous.Supported := True;
-      LNodeSpeed                                  := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
-      if Assigned(LNodeSpeed) then
+      LNodeTmp                                  := TONVIFXMLUtils.RecursiveFindNode(LMoveOptionNode,'Speed');
+      if Assigned(LNodeTmp) then
       begin
-        FFocusSettings.Options.Continuous.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Min'),-1);  
-        FFocusSettings.Options.Continuous.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeSpeed,'Max'),-1);
+        FFocusSettings.Options.Continuous.Speed.Min := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Min'),-1);  
+        FFocusSettings.Options.Continuous.Speed.Max := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp,'Max'),-1);
       end;
     end;
     Result := True;  
   end;
 end;
 
-function TONVIFImagingManager.GetStatus: Boolean;
+function TONVIFImagingManager.GetOptions: Boolean;
+var LResponseStr       : String;
+    LSoapBodyNode      : IXMLNode;    
+    LNodeTmp1          : IXMLNode;
+    LNodeTmp2          : IXMLNode;
+    LImgSettingsNode   : IXMLNode;
+
+    Procedure GetMinMaxValue(aParentNode:IXMLNode;aNodeName:String;var aValueResult : TMinMaxValue);
+    var LNodeMinMax : IXMLNode;
+    begin
+      LNodeMinMax := TONVIFXMLUtils.RecursiveFindNode(aParentNode, aNodeName);
+      if Assigned(LNodeMinMax) then
+      begin
+        aValueResult.Min  := StrToFloatDef(TONVIFXMLUtils.GetChildNodeValue(LNodeMinMax, 'Min'), -1);
+        aValueResult.Max  := StrToFloatDef(TONVIFXMLUtils.GetChildNodeValue(LNodeMinMax, 'Max'), -1);
+      end;    
+    end;
+begin
+  Result := False;  
+
+  
+ // ResetPTZStatus;
+  if not isValidToken('TONVIFImagingManager.GetOptions') then Exit;
+  Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFPTZManager.GetOptions',FONVIFManager.GetSOAPBuilder.PrepareGetImagingOptions(FToken),LResponseStr);
+  if Result then
+  begin
+    Result := False;  
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        FONVIFManager.DoWriteLog('TONVIFImagingManager.GetOptions',LResponseStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    LSoapBodyNode := FONVIFManager.GetBodyNode(LResponseStr);
+    if not Assigned(LSoapBodyNode) then Exit;
+  
+    LImgSettingsNode := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode, 'ImagingOptions');
+
+    if not Assigned(LImgSettingsNode) then Exit;
+   
+    FImagingOptions.BacklightCompensation := TONVIFXMLUtils.GetChildNodeValues(LImgSettingsNode, 'BacklightCompensation','Mode');
+    
+    GetMinMaxValue(LImgSettingsNode,'Brightness',FImagingOptions.Brightness); 
+    GetMinMaxValue(LImgSettingsNode,'ColorSaturation',FImagingOptions.ColorSaturation);    
+    GetMinMaxValue(LImgSettingsNode,'Contrast',FImagingOptions.Contrast);    
+
+
+    FImagingOptions.Exposure.Mode  := TONVIFXMLUtils.GetChildNodeValues(LImgSettingsNode,'Exposure', 'Mode');
+    LNodeTmp1                      := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode, 'Exposure');
+    if Assigned(LNodeTmp1) then
+    begin
+      GetMinMaxValue(LNodeTmp1,'MinExposureTime',FImagingOptions.Exposure.MinExposureTime);    
+      GetMinMaxValue(LNodeTmp1,'MaxExposureTime',FImagingOptions.Exposure.MaxExposureTime);    
+      GetMinMaxValue(LNodeTmp1,'MaxIris',FImagingOptions.Exposure.MaxIris);    
+      GetMinMaxValue(LNodeTmp1,'ExposureTime',FImagingOptions.Exposure.ExposureTime);    
+      GetMinMaxValue(LNodeTmp1,'Iris',FImagingOptions.Exposure.Iris);    
+    end;
+
+    FImagingOptions.Focus.AutoFocusModes := TONVIFXMLUtils.GetChildNodeValues(LImgSettingsNode,'Focus', 'AutoFocusModes');    
+    LNodeTmp1                            := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode, 'Focus');
+    if Assigned(LNodeTmp1) then
+    begin    
+      GetMinMaxValue(LNodeTmp1,'Iris',FImagingOptions.Focus.DefaultSpeed);    
+      GetMinMaxValue(LNodeTmp1,'FarLimit',FImagingOptions.Focus.FarLimit);    
+      GetMinMaxValue(LNodeTmp1,'NearLimit',FImagingOptions.Focus.NearLimit);    
+    end;
+
+    FImagingOptions.IrCutFilterModes := TONVIFXMLUtils.GetChildNodeValues(LSoapBodyNode,'ImagingOptions', 'IrCutFilterModes');
+    GetMinMaxValue(LImgSettingsNode,'Sharpness',FImagingOptions.Sharpness);        
+
+    FImagingOptions.WideDynamicRange.Mode  := TONVIFXMLUtils.GetChildNodeValues(LImgSettingsNode,'WideDynamicRange', 'Mode');    
+    LNodeTmp1                              := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode, 'WideDynamicRange');
+    if Assigned(LNodeTmp1) then
+      GetMinMaxValue(LNodeTmp1,'Level',FImagingOptions.WideDynamicRange.Level); 
+      
+    FImagingOptions.WhiteBalance.Mode      := TONVIFXMLUtils.GetChildNodeValues(LImgSettingsNode,'WhiteBalance', 'Mode');
+    LNodeTmp1                              := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode, 'WhiteBalance');
+    if Assigned(LNodeTmp1) then
+    begin
+      FImagingOptions.WhiteBalance.CrGain := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1, 'CrGain'), -1);
+      FImagingOptions.WhiteBalance.CbGain := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1, 'CbGain'), -1);
+    end;
+
+    LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode, 'Extension');
+    if Assigned(LNodeTmp1) then
+    begin
+      FImagingOptions.Extension.DefoggingOptions.Mode  := TONVIFXMLUtils.GetChildNodeValues(LNodeTmp1,'DefoggingOptions','Mode');
+      
+      LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1, 'DefoggingOptions');
+      if Assigned(LNodeTmp2) then
+        FImagingOptions.Extension.DefoggingOptions.Level := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp2, 'Level'), False);
+      
+      FImagingOptions.Extension.NoiseReductionOptions  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1, 'NoiseReductionOptions'), False);
+    end;
+
+    Result := True;
+  
+  end;
+end;
+
+function TONVIFImagingManager.GetStatus(aFireEvent:Boolean): Boolean;
 var LResponseStr       : String;
     LSoapBodyNode      : IXMLNode;
     LGestStatus        : IXMLNode;
     I                  : Integer;  
 begin
-  Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFImagingManager.GetImagingSettings',FONVIFManager.GetSOAPBuilder.PrepareImagingGetStatus(FToken),LResponseStr);
+  Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFImagingManager.GetStatus',FONVIFManager.GetSOAPBuilder.PrepareImagingGetStatus(FToken),LResponseStr);
   if Result then
   begin
     Result := False;  
@@ -463,11 +693,7 @@ begin
     for I := 0 to LGestStatus.ChildNodes.Count -1 do
     begin
       if SameText(LGestStatus.ChildNodes[I].DOMNode.localName,'Position') then
-      begin
         FFocusSettings.Status.Position := StrToFloatLocale(LGestStatus.ChildNodes[I].Text,-1) 
-
-        {TODO Add event with current position e Max e Min range of focus }
-      end
       else if SameText(LGestStatus.ChildNodes[I].DOMNode.localName,'MoveStatus') then
         FFocusSettings.Status.MoveStatus := LGestStatus.ChildNodes[I].Text
       else if SameText(LGestStatus.ChildNodes[I].DOMNode.localName,'Error') then
@@ -478,7 +704,14 @@ begin
             FONVIFManager.DoWriteLog('TONVIFImagingManager.GetStatus',Format('Unsupported node name [%s]',[LGestStatus.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
         {TSI:IGNORE OFF}
         {$ENDREGION}                                                
+
     end;      
+    if aFireEvent then
+    begin
+      if Assigned(FOnGetFocusAbsoluteLimit) and FFocusSettings.Options.Absolute.Supported then
+        FOnGetFocusAbsoluteLimit(FFocusSettings.Options.Absolute.Position.Min,FFocusSettings.Options.Absolute.Position.Max,FFocusSettings.Status.Position,FFocusSettings.Status.MoveStatus,FFocusSettings.Status.Error)      
+    end;
+
   end
   else
     {$REGION 'Log'}
@@ -504,10 +737,12 @@ begin
 
   if not GetCapabilities then exit;
 
+  GetOptions;
+  
   if GetMoveOptions then
   begin
     if SupportedInfo.FocusSupported then
-      GetStatus;
+      GetStatus(True);
   end;
 
   Result := FONVIFManager.ExecuteRequest(atImaging,'TONVIFImagingManager.GetImagingSettings',FONVIFManager.GetSOAPBuilder.PrepareGetImagingSettings(FToken),LResponseStr);
@@ -538,6 +773,7 @@ begin
       if Assigned(LNodeTmp1) then
       begin
         FImagingSettings.Exposure.Mode            := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Mode');
+        FImagingSettings.Exposure.Priority        := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Priority');        
         FImagingSettings.Exposure.MinExposureTime := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MinExposureTime'),-1);
         FImagingSettings.Exposure.MaxExposureTime := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MaxExposureTime'),-1);      
         FImagingSettings.Exposure.MinIris         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'MinIris'),-1);      
@@ -563,7 +799,10 @@ begin
         else if SameText(LTmpStrValue,'FARLIMIT') then
           FImagingSettings.Focus.AutoFocusMode := ifmFarLimit;
       
-        FImagingSettings.Focus.DefaultSpeed := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'DefaultSpeed'),-1);      
+        FImagingSettings.Focus.DefaultSpeed := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'DefaultSpeed'),-1);   
+
+        if Assigned(FOnGetFocusSettings) then
+          FOnGetFocusSettings(FImagingSettings.Focus.AutoFocusMode,FImagingSettings.Focus.DefaultSpeed);           
       end;
 
       LTmpStrValue := TONVIFXMLUtils.GetChildNodeValue(LImgSettingsNode,'IrCutFilter').Trim;
@@ -573,20 +812,33 @@ begin
         FImagingSettings.IrCutFilter := icfmON
       else if SameText(LTmpStrValue,'OFF') then
         FImagingSettings.IrCutFilter := icfmOFF;
-
+        
+      if Assigned(FOnGetIrCutSettings) then
+        FOnGetIrCutSettings(FImagingSettings.IrCutFilter);
+        
       FImagingSettings.Sharpness := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LImgSettingsNode,'Sharpness'),-1); 
       
       LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode,'WideDynamicRange');
       if Assigned(LNodeTmp1) then
-        FImagingSettings.WideDynamicRange.Mode := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Mode');
+      begin
+        FImagingSettings.WideDynamicRange.Mode   := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Mode');
+        FImagingSettings.WideDynamicRange.YrGain := StrToFloatLocale( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'YrGain'),-1);
+        FImagingSettings.WideDynamicRange.YbGain := StrToFloatLocale( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'YbGain'),-1);        
+
+      end;
 
       LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode,'WhiteBalance');
-      if Assigned(LNodeTmp1) then      
-        FImagingSettings.WhiteBalance.Mode := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Mode');        
+      if Assigned(LNodeTmp1) then     
+      begin 
+        FImagingSettings.WhiteBalance.Mode   := TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'Mode');        
+        FImagingSettings.WhiteBalance.CrGain := StrToFloatLocale( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'CrGain'),-1);        
+        FImagingSettings.WhiteBalance.CbGain := StrToFloatLocale( TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'CbGain'),-1);                
+      end;
 
       LNodeTmp1 := TONVIFXMLUtils.RecursiveFindNode(LImgSettingsNode,'Extension',True);
       if Assigned(LNodeTmp1) then      
       begin
+
         for I := 0 to LNodeTmp1.ChildNodes.Count -1 do
         begin
           if not SameText(LNodeTmp1.ChildNodes[I].DOMNode.localName,'Defogging') and 
@@ -597,7 +849,8 @@ begin
                 FONVIFManager.DoWriteLog('TONVIFImagingManager.GetImagingSettings',Format('Unsupported node name [%s]',[LNodeTmp1.ChildNodes[I].DOMNode.localName]),tpLivWarning);      
             {TSI:IGNORE OFF}
             {$ENDREGION}                                                
-        end;          
+        end;         
+         
         LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Defogging');
         if Assigned(LNodeTmp2) then
         begin

@@ -34,9 +34,9 @@ object Form1: TForm1
   end
   object Panel2: TPanel
     Left = 360
-    Top = 41
+    Top = 81
     Width = 497
-    Height = 540
+    Height = 500
     Align = alRight
     BevelOuter = bvNone
     Caption = 'Panel2'
@@ -45,7 +45,7 @@ object Form1: TForm1
       Left = 0
       Top = 0
       Width = 497
-      Height = 540
+      Height = 500
       Align = alClient
       Columns = <
         item
@@ -117,9 +117,9 @@ object Form1: TForm1
       Top = 12
       Width = 121
       Height = 21
-      EditLabel.Width = 60
+      EditLabel.Width = 50
       EditLabel.Height = 13
-      EditLabel.Caption = 'Passwordr:  '
+      EditLabel.Caption = 'Password:'
       LabelPosition = lpLeft
       TabOrder = 3
     end
@@ -135,18 +135,18 @@ object Form1: TForm1
   end
   object tv1: TTreeView
     Left = 0
-    Top = 41
+    Top = 81
     Width = 360
-    Height = 540
+    Height = 500
     Align = alClient
     Indent = 19
     TabOrder = 3
   end
   object pnlPTZ: TPanel
     Left = 857
-    Top = 41
+    Top = 81
     Width = 241
-    Height = 540
+    Height = 500
     Align = alRight
     Enabled = False
     TabOrder = 4
@@ -158,7 +158,6 @@ object Form1: TForm1
       Align = alTop
       BevelOuter = bvNone
       TabOrder = 0
-      ExplicitTop = 230
       object Label4: TLabel
         AlignWithMargins = True
         Left = 3
@@ -235,7 +234,6 @@ object Form1: TForm1
       Align = alTop
       BevelOuter = bvNone
       TabOrder = 1
-      ExplicitTop = 47
       object Label6: TLabel
         AlignWithMargins = True
         Left = 3
@@ -366,7 +364,6 @@ object Form1: TForm1
       Align = alTop
       BevelOuter = bvNone
       TabOrder = 2
-      ExplicitTop = 280
       object Label5: TLabel
         AlignWithMargins = True
         Left = 3
@@ -445,8 +442,6 @@ object Form1: TForm1
       Caption = 'Set home'
       TabOrder = 3
       OnClick = BSetHomeClick
-      ExplicitLeft = 6
-      ExplicitTop = 202
     end
     object Panel3: TPanel
       Left = 1
@@ -456,7 +451,6 @@ object Form1: TForm1
       Align = alTop
       BevelOuter = bvNone
       TabOrder = 4
-      ExplicitTop = 330
       object Label7: TLabel
         AlignWithMargins = True
         Left = 3
@@ -523,7 +517,6 @@ object Form1: TForm1
       BevelOuter = bvNone
       Enabled = False
       TabOrder = 5
-      ExplicitTop = 414
       object Label3: TLabel
         AlignWithMargins = True
         Left = 3
@@ -601,9 +594,78 @@ object Form1: TForm1
         Height = 21
         Align = alTop
         TabOrder = 1
-        ExplicitLeft = 6
-        ExplicitTop = 30
       end
+    end
+  end
+  object Panel7: TPanel
+    Left = 0
+    Top = 41
+    Width = 1098
+    Height = 40
+    Align = alTop
+    Caption = 'Panel1'
+    ShowCaption = False
+    TabOrder = 5
+    object Label8: TLabel
+      AlignWithMargins = True
+      Left = 4
+      Top = 4
+      Width = 36
+      Height = 32
+      Align = alLeft
+      Caption = 'Proxy:'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clWindowText
+      Font.Height = -11
+      Font.Name = 'Tahoma'
+      Font.Style = [fsBold]
+      ParentFont = False
+      WordWrap = True
+      ExplicitHeight = 13
+    end
+    object EProxyAddress: TLabeledEdit
+      Left = 83
+      Top = 6
+      Width = 150
+      Height = 21
+      EditLabel.Width = 23
+      EditLabel.Height = 13
+      EditLabel.Caption = 'URL:'
+      LabelPosition = lpLeft
+      TabOrder = 0
+    end
+    object EProxyUser: TLabeledEdit
+      Left = 441
+      Top = 6
+      Width = 121
+      Height = 21
+      EditLabel.Width = 32
+      EditLabel.Height = 13
+      EditLabel.Caption = 'User:  '
+      LabelPosition = lpLeft
+      TabOrder = 1
+    end
+    object EProxyPWD: TLabeledEdit
+      Left = 639
+      Top = 6
+      Width = 121
+      Height = 21
+      EditLabel.Width = 60
+      EditLabel.Height = 13
+      EditLabel.Caption = 'Passwordr:  '
+      LabelPosition = lpLeft
+      TabOrder = 2
+    end
+    object EProxyPort: TLabeledEdit
+      Left = 265
+      Top = 6
+      Width = 121
+      Height = 21
+      EditLabel.Width = 20
+      EditLabel.Height = 13
+      EditLabel.Caption = 'Port'
+      LabelPosition = lpLeft
+      TabOrder = 3
     end
   end
 end

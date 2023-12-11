@@ -57,6 +57,12 @@ type
     BSetCustomToken: TButton;
     Label2: TLabel;
     ECurrentToken: TEdit;
+    Panel7: TPanel;
+    EProxyAddress: TLabeledEdit;
+    EProxyUser: TLabeledEdit;
+    EProxyPWD: TLabeledEdit;
+    Label8: TLabel;
+    EProxyPort: TLabeledEdit;
     procedure btnPTZPanRightMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure btnPTZTiltDownMouseDown(Sender: TObject; Button: TMouseButton;
@@ -115,6 +121,8 @@ type
       const aNetworkInterface: TNetworkInterface);
     procedure BuildSystemDateTimeTreeView(Node: TTreeNode;
       const aSystemDateTime: TONVIFSystemDateAndTime);
+    procedure BuildImageOptionsTreeView(Node: TTreeNode;
+      const aImageOptions: TImagingOptions);
   public
     { Public declarations }
   end;
@@ -246,14 +254,15 @@ begin
     tv1.Items.AddChild(LChildNode,Format('SerialNumber: %s',[FONVIFManager.Device.SerialNumber]));
     tv1.Items.AddChild(LChildNode,Format('HardwareId: %s',[FONVIFManager.Device.HardwareId])) ;   
     BuildSystemDateTimeTreeView(LRootNode,FONVIFManager.SystemDateTime);
-    BuildCapabilitiesTreeView(LRootNode,FONVIFManager.Capabilities);
+    
     BuildNetworkInterfaceTreeView(LRootNode,FONVIFManager.NetworkInterface);
     LRootNode := tv1.Items.Add(nil,'Profiles');
 
     for I := Low(FONVIFManager.Profiles) to High(FONVIFManager.Profiles) do      
       BuildProfileTreeView(LRootNode,FONVIFManager.Profiles[I]);
     BuildPTZNodeTreeView(LRootNode,FONVIFManager.PTZ.PTZNode);
-    BuildImagingSettingsTreeView(LRootNode,FONVIFManager.Imaging.ImagingSettings);      
+    BuildImagingSettingsTreeView(LRootNode,FONVIFManager.Imaging.ImagingSettings); 
+    BuildImageOptionsTreeView(LRootNode,FONVIFManager.Imaging.ImagingOptions);         
     BuildImagingFocusOptionsTreeView(LRootNode,FONVIFManager.Imaging.FocusSettings);      
 
   Finally
@@ -289,9 +298,7 @@ begin
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
-var
-  I: Integer;
-
+var I: Integer;
 begin
   Memo1.Lines.Clear;
   if Assigned(FONVIFManager) then
@@ -304,6 +311,10 @@ begin
   FONVIFManager.PTZ.OnGetPTZInfo             := DoEnablePTZ; 
   FONVIFManager.ExcludeReuqest.RecordingList := False;
   FONVIFManager.PTZ.OnAuxiliaryCommandFound  := DoAuxiliaryCommandFound;
+  FONVIFManager.ProxySettings.Address        := EProxyAddress.Text;
+  FONVIFManager.ProxySettings.Port           := StrToIntDef(EProxyPort.Text,0);
+  FONVIFManager.ProxySettings.Username       := EProxyUser.Text;
+  FONVIFManager.ProxySettings.Password       := EProxyPWD.Text;    
   ListView1.Clear;
   cbAuxCmd.Items.Clear;
   cbAuxCmd.ItemIndex := -1;
@@ -332,7 +343,7 @@ var LNewIp : String;
 begin
   LNewIp := '192.168.0.';
   if InputQuery('New ip','',LNewIP) then
-    EURL.Text := Format('onvif://%S:80/',[LNewIP]);  
+    EURL.Text := Format('onvif://%S:80/',[LNewIP.Trim]);  
 end;
 
 procedure TForm1.BGotoPresetClick(Sender: TObject);
@@ -402,8 +413,7 @@ begin
   begin
     for I := 0 to Length(FListAuxValue[Integer(cbAuxCmd.Items.Objects[cbAuxCmd.ItemIndex])]) -1 do
       cbAuxValue.Items.Add((FListAuxValue[Integer(cbAuxCmd.Items.Objects[cbAuxCmd.ItemIndex])])[I]);
-  end;
-    
+  end;    
 end;
 
 procedure TForm1.BuildImagingFocusOptionsTreeView(Node: TTreeNode;const aFocusOptions:TImagingFocusSettings );
@@ -428,7 +438,6 @@ begin
   end;
 end;
 
-
 procedure TForm1.BuildImagingSettingsTreeView(Node: TTreeNode;const aImaginingSettings:TImagingSettings );    
 var LContext: TRttiContext;
     LTypeObj: TRttiType;
@@ -450,8 +459,6 @@ begin
     LContext.Free;
   end;
 end;
-
-
 
 procedure TForm1.BuildNetworkInterfaceTreeView(Node: TTreeNode; const aNetworkInterface: TNetworkInterface);
 var LContext: TRttiContext;
@@ -498,6 +505,27 @@ begin
   end;
 end;
 
+procedure TForm1.BuildImageOptionsTreeView(Node: TTreeNode; const aImageOptions: TImagingOptions);
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+begin
+  Node := tv1.Items.AddChild(nil, 'ImageOptions');
+
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TImagingOptions));
+
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aImageOptions);
+      processTValue(Node,LField,LValue);
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
 
 procedure TForm1.BuildCapabilitiesTreeView(Node: TTreeNode; const aCapabilities: TCapabilitiesONVIF);
 var LContext: TRttiContext;

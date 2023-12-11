@@ -27,6 +27,10 @@ You may use/change/modify the component under 1 conditions:
 
 unit ONVIF.PTZ;
 
+{specs:  https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v1712.pdf?441d4a&441d4a
+         https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v221.pdf
+}
+
 interface
                           
 uses
@@ -35,11 +39,16 @@ uses
   Soap.XSBuiltIns;
 
 Type
+ {TODO LISt
+        -- Move AbsoluteMove,RelativeMove
+   
+        -- GetConfigurationOptions
+        -- GetNode        
+        -- PresetTours
+ }
 
-
-  TOnAuxiliaryCommandFound = procedure (const aCommand:String;const aValues:TArray<String>) of object;
-  
-  TONVIFPTZManager     = class;
+  TOnAuxiliaryCommandFound = procedure (const aCommand:String;const aValues:TArray<String>) of object;  
+  TONVIFPTZManager         = class;
 
 
   /// <summary>
@@ -233,7 +242,8 @@ Type
     /// <returns>
     ///   True if the operation successfully , False otherwise.</returns>  
     /// </returns>
-    function GetNodes: Boolean;    
+    function GetNodes: Boolean;  
+
 
     /// <summary>
     ///  A PTZ-capable device shall implement the GetNode operation and return the properties of the requested PTZ node, if it
@@ -661,10 +671,10 @@ end;
 function TONVIFPTZManager.GetNode(const aNodeToken:String;aPTZNode:String): Boolean; 
 var LResponseStr : String;
 begin
-  Result := False;  
+
 
   raise Exception.Create('not implemented');
-
+  Result := False;  
   //TODO
   ResetPTZNode;
   if not isValidToken('TONVIFPTZManager.GetNode') then Exit;
@@ -690,8 +700,7 @@ var LResponseStr   : String;
     LCountAuxValue : Integer;
     LFoundAux      : Boolean;
     LTmpStr        : string;  
-    LTmpStrSplit   : string;
-    LErrorFound    : Boolean;
+    LTmpStrSplit   : string;    
 
     Procedure BuildArrayXY(aParentNode: IXMLNode;var aArrayXY: TArrayXY);
     var LCount           : Integer;
@@ -814,7 +823,7 @@ begin
       end;
       FPTZNode.MaximumNumberOfPresets := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'MaximumNumberOfPresets'),-1);  
       FPTZNode.HomeSupported          := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodes.ChildNodes[I],'HomeSupported'),False); 
-      LCountAux                       := 0;
+      
       LCountAux                       := 0;
       for X := 0 to LNodes.ChildNodes[i].ChildNodes.Count -1 do
       begin  
@@ -875,7 +884,7 @@ begin
           if not SameText(LNodesList.ChildNodes[Z].DOMNode.localName,'SupportedPresetTour') then
             {$REGION 'Log'}
             {TSI:IGNORE ON}
-                FONVIFManager.DoWriteLog('TONVIFPTZManager.GetCapabilities',Format('Unsupported node name [%s]',[LNodesList.ChildNodes[X].DOMNode.localName]),tpLivWarning);      
+                FONVIFManager.DoWriteLog('TONVIFPTZManager.GetCapabilities',Format('Unsupported node name [%s]',[LNodesList.ChildNodes[Z].DOMNode.localName]),tpLivWarning);      
             {TSI:IGNORE OFF}
             {$ENDREGION}                                                
         end;            
@@ -1079,6 +1088,7 @@ var LResponseStr       : String;
     LPreset            : PTPTZPreset;
     LSoapBodyNode      : IXMLNode;
     LPresetSetResponse : IXMLNode;
+    I                  : Integer;
 begin
   Result            := False;  
   aNewIndexPreset   := -1;
@@ -1090,16 +1100,33 @@ begin
     Exit;
   end;
 
-  LNewSetPresetToken := (FPresentList.Count +1).ToString;
+  if FPresentList.Count = 0 then
+  begin
+    if not LoadPresetList then exit;
+  end;
+ 
+  for I := 0 to FPresentList.Count -1 do
+  begin
+    if SameText(FPresentList[I].Name,aPresetName) then
+    begin
+      if aIndexExistsPreset > -1 then
+      begin
+        if I = aIndexExistsPreset then break;        
+      end;
+      FONVIFManager.SetLastStatusCode('TONVIFPTZManager.SetPreset',ONVIF_ERROR_PTZ_PRESETNAME_IS_DUPLICATE);      
+      Exit;     
+    end;     
+  end;
+    
+  LNewSetPresetToken := String.empty;
   if aIndexExistsPreset > -1 then
   begin
     if not inRange(aIndexExistsPreset,0,FPresentList.Count -1) then
     begin
       FONVIFManager.SetLastStatusCode('TONVIFPTZManager.SetPreset',ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX);
       Exit;
-    end;
-
-    LNewSetPresetToken := FPresentList[aIndexExistsPreset].Token;
+    end;    
+    LNewSetPresetToken := FPresentList[aIndexExistsPreset].Token;    
   end
   else if FPresentList.Count +1 > SupportedInfo.MaxPreset then
   begin    
@@ -1125,10 +1152,18 @@ begin
       if not Assigned(LSoapBodyNode) then Exit;
       New(LPreset);
       LPreset^.Name      := aPresetName;
-      LPresetSetResponse := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'SetPresetsResponse');      
-      LPreset^.Token     := TONVIFXMLUtils.GetAttribute(LPresetSetResponse,'token');
-      aNewIndexPreset    := FPresentList.Add(LPreset);
-      Result             := True;      
+      LPresetSetResponse := TONVIFXMLUtils.RecursiveFindNode(LSoapBodyNode,'SetPresetsResponse'); 
+      
+      if not Assigned(LPresetSetResponse) then
+        {$REGION 'Log'}
+        {TSI:IGNORE ON}
+           FONVIFManager.DoWriteLog('TONVIFManager.SetPreset','Response is empty',tpLivWarning)    
+        {TSI:IGNORE OFF}
+        {$ENDREGION}  
+      else
+        LPreset^.Token := TONVIFXMLUtils.GetAttribute(LPresetSetResponse,'token');
+      aNewIndexPreset := FPresentList.Add(LPreset);
+      Result          := True;      
     end;
   end;    
 end;
@@ -1146,9 +1181,9 @@ begin
     end
     else
     begin      
-      GetStatus; 
+     
       GetNodes;
-      
+      GetStatus;     
       //  TODO    GetConfigurationOptions;
       FONVIFManager.SetTokenImagingByPTZToken; 
       if Assigned(FOnGetPTZInfo) then      
@@ -1177,30 +1212,23 @@ end;
 
 Procedure TONVIFPTZManager.ResetPTZStatus;
 begin
+   FPTZStatus                       := Default(TPTZStatus);
    FPTZStatus.PTZPosition.PanTilt.X := -1;
    FPTZStatus.PTZPosition.PanTilt.Y := -1;   
    FPTZStatus.PTZPosition.Zoom      := -1;   
-   FPTZStatus.MoveStatus.PanTilt    := String.Empty;   
-   FPTZStatus.MoveStatus.Zoom       := String.Empty;   
-   FPTZStatus.Error                 := String.Empty;
-   FPTZStatus.UtcTime               := 0;
 end;
 
 procedure TONVIFPTZManager.ResetPTZNode;
 begin
-  FPTZNode.FixedHomePosition                                             := False;
-  FPTZNode.GeoMove                                                       := False;
-  FPTZNode.Token                                                         := String.Empty;
+  FPTZNode := Default(TPTZNode);
   SetLength(FPTZNode.SupportedPTZSpaces.AbsolutePanTiltPositionSpace,0);
   SetLength(FPTZNode.SupportedPTZSpaces.AbsoluteZoomPositionSpace,0);
   SetLength(FPTZNode.SupportedPTZSpaces.RelativePanTiltTranslationSpace,0);
   SetLength(FPTZNode.SupportedPTZSpaces.RelativeZoomTranslationSpace,0);
   SetLength(FPTZNode.SupportedPTZSpaces.ContinuousPanTiltVelocitySpace,0);
   SetLength(FPTZNode.SupportedPTZSpaces.ContinuousZoomVelocitySpace,0);    
-  FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.URI                      := String.Empty;  
   FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.XRange.Min               := -1;
   FPTZNode.SupportedPTZSpaces.PanTiltSpeedSpace.XRange.Max               := -1;
-  FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.URI                         := String.Empty;  
   FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Min                  := -1;
   FPTZNode.SupportedPTZSpaces.ZoomSpeedSpace.XRange.Max                  := -1;  
   SetLength(FPTZNode.AuxiliaryCommands,0)

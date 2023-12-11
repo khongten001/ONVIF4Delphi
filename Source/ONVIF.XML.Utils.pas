@@ -42,8 +42,11 @@ Type
   ///   manipulation, parsing, and generation of XML documents in compliance
   ///   with the ONVIF standard.
   /// </remarks>
-  TONVIFXMLUtils = class    
+  TONVIFXMLUtils = class
+  private
+
   public
+    class function GetChildNodeValues(const aParentNode: IXMLNode; const aChildParentName,aChildName: string): TArray<string>; static;    
     /// <summary>
     ///   Retrieves the value of a child node within a specified parent node.
     /// </summary>
@@ -112,7 +115,39 @@ begin
 end;
 
 
-{ TONVIFXMLUtils }
+class function TONVIFXMLUtils.GetChildNodeValues(const aParentNode: IXMLNode; const aChildParentName,aChildName: string): TArray<string>;
+var LChildNode: IXMLNode;
+    I         : Integer;
+    LLen      : Integer;
+begin
+  Result := nil;
+
+  if Assigned(aParentNode) then
+  begin
+    LChildNode := aParentNode.ChildNodes.FindNode(aChildParentName,'');
+    if Assigned(LChildNode) then
+    begin
+      
+      for I := 0 to LChildNode.ChildNodes.Count - 1 do
+      begin
+        if SameText(LChildNode.ChildNodes[I].DOMNode.localName,aChildName) then
+        begin
+          if LChildNode.ChildNodes[I].DOMNode.nodeType = ELEMENT_NODE then
+          begin
+            if (LChildNode.ChildNodes[I].ChildNodes.Count > 0) or (not LChildNode.ChildNodes[I].Text.IsEmpty) then
+            begin
+              LLen := Length(Result);
+              SetLength(Result,LLen +1);
+              Result[LLen] := LChildNode.ChildNodes[I].Text;
+            end;
+          end;
+        end;
+      end;
+    end;
+  end;
+end;
+
+
 class function TONVIFXMLUtils.GetChildNodeValue(const ParentNode: IXMLNode; const ChildNodeName: string): string;
 var LTmpIndex : Integer;
 begin

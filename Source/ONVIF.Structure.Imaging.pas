@@ -100,6 +100,7 @@ Type
   /// </summary>
   TImagingExposure = record
      Mode            : String;
+     Priority        : String;
      MinExposureTime : Double;
      MaxExposureTime : Double;
      MinGain         : Double;
@@ -176,7 +177,6 @@ Type
     Status  : TFocusStatus;
   end;
   
-
   /// <summary>
   ///   Record representing focus settings.
   ///   • AutoFocusMode: Mode indicating the autofocus behavior.
@@ -192,7 +192,9 @@ Type
   ///   • Mode: String representing the mode of wide dynamic range.
   /// </summary>  
   TWideDynamicRange = record
-    Mode : String;
+    Mode   : String;
+    YrGain : Double;
+    YbGain : Double;
   end;
 
   /// <summary>
@@ -200,7 +202,9 @@ Type
   ///   • Mode: String representing the mode of white balance.
   /// </summary>  
   TWhiteBalance = record
-    Mode : String;
+    Mode   : String;
+    CrGain : Double;
+    CbGain : Double;
   end;
 
   /// <summary>
@@ -252,12 +256,95 @@ Type
      Contrast              : Integer; 
      Exposure              : TImagingExposure;
      Focus                 : TImagingFocus;
-     IrCutFilter           : TIrCutFilterMode;
+     IrCutFilter           : TIrCutFilterMode;     
      Sharpness             : Integer; 
      WideDynamicRange      : TWideDynamicRange;
      WhiteBalance          : TWhiteBalance;
      Extension             : TImagingExtension;     
   end;
+
+  TFocusOptions20     = TImagingFocus;
+  TImagingExposure20  = TImagingExposure;
+  TWideDynamicRange20 = TWideDynamicRange;
+  TWhiteBalance20     = TWhiteBalance;
+  
+
+  TImagingOptions20 = record
+     BacklightCompensation : Boolean;
+     Brightness            : Integer;
+     ColorSaturation       : Integer;
+     Contrast              : Integer; 
+     Exposure              : TImagingExposure20;
+     Focus                 : TFocusOptions20;
+     IrCutFilter           : TIrCutFilterMode;     
+     Sharpness             : Integer; 
+     WideDynamicRange      : TWideDynamicRange20;
+     WhiteBalance          : TWhiteBalance20;     
+  end;
+
+
+  TMinMaxValue = Record
+     Min : Real;
+     Max : Real;
+  end;  
+  
+  TDefoggingOptions = record
+    Mode : TArray<String>; 
+    Level: Boolean; 
+  end;
+
+  TExtensionOptions = record
+    DefoggingOptions     : TDefoggingOptions;
+    NoiseReductionOptions: Boolean;
+  end;
+
+  TWideDynamicRangeOptions = record
+    Mode : TArray<String>;
+    Level: TMinMaxValue;
+  end;
+
+  TFocusImagingOptions = record
+    AutoFocusModes: TArray<String>;
+    DefaultSpeed  : TMinMaxValue;
+    NearLimit     : TMinMaxValue;
+    FarLimit      : TMinMaxValue;
+  end;
+  
+  TExposureImagingOptions = record
+    Mode           : TArray<String>;
+    MinExposureTime: TMinMaxValue;
+    MaxExposureTime: TMinMaxValue;
+    MaxIris        : TMinMaxValue; 
+    ExposureTime   : TMinMaxValue;
+    Iris           : TMinMaxValue;
+  end;
+
+
+  /// <summary>
+  ///   Record representing white balance options.
+  ///   • Mode: String representing the mode of white balance.
+  /// </summary>  
+  TWhiteBalanceOptions = record
+    Mode   : TArray<string>;
+    CrGain : Double;
+    CbGain : Double;
+  end;  
+
+  TImagingOptions = record
+    BacklightCompensation: TArray<String>;
+    Brightness           : TMinMaxValue;
+    ColorSaturation      : TMinMaxValue;
+    Contrast             : TMinMaxValue;
+    Exposure             : TExposureImagingOptions;
+    Focus                : TFocusImagingOptions;
+    IrCutFilterModes     : TArray<String>;
+    Sharpness            : TMinMaxValue;
+    WideDynamicRange     : TWideDynamicRangeOptions;
+    WhiteBalance         : TWhiteBalanceOptions;
+    Extension            : TExtensionOptions;
+  end;
+
+
   
 
 implementation

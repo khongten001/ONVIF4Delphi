@@ -28,8 +28,8 @@ You may use/change/modify the component under 1 conditions:
 unit ONVIF.SOAP.Builder;
 
 interface
-
-uses IdHashSHA,System.SysUtils,System.NetEncoding,Soap.XSBuiltIns,IdGlobal; 
+uses
+  IdHashSHA, System.SysUtils, System.NetEncoding, Soap.XSBuiltIns, IdGlobal,System.DateUtils;
 
 CONST END_SOAP_XML =  '</soap:Body>'+
                       '</soap:Envelope>'; 
@@ -92,9 +92,11 @@ Type
     ///   A string containing the details of the SOAP connection in XML format.
     /// </returns>
     function GetSoapXMLConnection:String;
+
+
   public
      constructor Create(const aLogin, aPassword:String);
-
+    procedure ResetDateTimeDevice;
     /// <summary>
     /// Prepares an ONVIF request to retrieve the system date and time information.
     /// </summary>
@@ -134,6 +136,7 @@ Type
     /// <returns>String representation of the SOAP request.</returns>
     function PrepareImagingMoveFocus(const aToken: String; aAbsolutePos, aRelativeDistance, aSpeed: String): String;
     
+    function PrepareGetImagingOptions(const aToken: String): String;    
     /// <summary>
     ///   Prepares an XML SOAP request for stopping the focus movement in imaging.
     /// </summary>
@@ -364,8 +367,15 @@ implementation
 constructor TONVIFSOAPBuilder.Create(const aLogin,aPassword:String);
 begin
   inherited create;
-  FLogin     := aLogin;
-  FPassword  := aPassword;
+  FLogin               := aLogin;
+  FPassword            := aPassword;
+  ResetDateTimeDevice;
+end;
+
+procedure TONVIFSOAPBuilder.ResetDateTimeDevice;
+begin
+  FDateTimeDevice      := 0;
+  FDeviceDifferenceSec := 0;
 end;
 
 procedure TONVIFSOAPBuilder.GetPasswordDigest(Var aPasswordDigest, aNonce, aCreated: String);
@@ -374,14 +384,22 @@ Var i          : Integer;
     LBnonce    : TBytes; 
     LDigest    : TBytes;
     Lraw_digest: TBytes;
+    LDateTime  : TDateTime;
+     
 begin
   SetLength(LRaw_nonce, 20);
   for i := 0 to High(LRaw_nonce) do
     LRaw_nonce[i]:= Random(256);
+
+  LDateTime := Now;
+
+  {Whenever possible, use the date and time from the device obtained through GetSystemDateTime.}
+  if FDateTimeDevice > 0 then
+    LDateTime := IncSecond(FDateTimeDevice,SecondsBetween(LDateTime,FDateTimeDevice));
     
   LBnonce         := TNetEncoding.Base64.Encode(LRaw_nonce);
   aNonce          := TEncoding.ANSI.GetString(LBnonce);
-  aCreated        := DateTimeToXMLTime(Now,False);
+  aCreated        := DateTimeToXMLTime(LDateTime,False);
   Lraw_digest     := SHA1(LRaw_nonce + TEncoding.ANSI.GetBytes(aCreated) + TEncoding.ANSI.GetBytes(FPassword));
   LDigest         := TNetEncoding.Base64.Encode(Lraw_digest);
   aPasswordDigest := TEncoding.ANSI.GetString(LDigest);
@@ -596,6 +614,14 @@ begin
   Result := GetSoapXMLConnection+ Format(GET_SETTINGS,[aToken]);
 end;
 
+function TONVIFSOAPBuilder.PrepareGetImagingOptions(const aToken: String): String;
+const GET_OPTIONS  = '<timg:GetOptions> '+
+                      '<timg:VideoSourceToken>%s</timg:VideoSourceToken> '+
+                      '</timg:GetOptions>'+ END_SOAP_XML;
+begin  
+  Result := GetSoapXMLConnection+ Format(GET_OPTIONS,[aToken]);
+end;
+
 {PTZ}
 
 Function TONVIFSOAPBuilder.PrepareStartMoveRelativeRequest(const aToken,aDirection: String): String;
@@ -729,10 +755,14 @@ function TONVIFSOAPBuilder.PrepareSetPreset(const aToken,aTokenPreset,aPresetNam
 const SET_PRESET  = ' <tptz:SetPreset> '+
                       '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
                       '<tptz:PresetName>%s</tptz:PresetName> '+                      
-                      '<tptz:PresetToken>%s</tptz:PresetToken> '+
+                      '%s'+
                       '</tptz:SetPreset>'+ END_SOAP_XML;
+      TAG_EDIT_PRESET = '<tptz:PresetToken>%s</tptz:PresetToken> ';
 begin  
-  Result := GetSoapXMLConnection+ Format(SET_PRESET,[aToken,aPresetName,aTokenPreset]);
+  if aTokenPreset.Trim.IsEmpty then
+    Result := GetSoapXMLConnection+ Format(SET_PRESET,[aToken,aPresetName,String.empty])
+  else
+    Result := GetSoapXMLConnection+ Format(SET_PRESET,[aToken,aPresetName,Format(TAG_EDIT_PRESET,[aTokenPreset])]);
 end;
 
 function TONVIFSOAPBuilder.PrepareRemovePreset(const aToken,aTokenPreset: String): String;
@@ -748,7 +778,7 @@ function TONVIFSOAPBuilder.PrepareStopMoveRequest(const aToken:String): String;
 const STOP_PTZ_COMMAND =  '<tptz:Stop>'+
                           '<tptz:ProfileToken>%s</tptz:ProfileToken> '+
                           '<tptz:PanTilt>true</tptz:PanTilt> '+
-                          '<tptz:Zoom>false</tptz:Zoom> '+
+                          '<tptz:Zoom>true</tptz:Zoom> '+
                           '</tptz:Stop> '+ END_SOAP_XML;
 begin
   Result := GetSoapXMLConnection+ Format(STOP_PTZ_COMMAND,[aToken]);

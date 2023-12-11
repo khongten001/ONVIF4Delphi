@@ -28,14 +28,15 @@ You may use/change/modify the component under 1 conditions:
 unit ONVIF;
 
 interface
-
+{specs: https://www.onvif.org/specs/core/ONVIF-Core-Specification.pdf}
 uses
-  System.Classes, System.SysUtils, System.SyncObjs, System.Messaging,ONVIF.Intf,
-  ONVIF.SOAP.Builder, System.IOUtils,  Soap.XSBuiltIns,ONVIF.Imaging,ActiveX,System.DateUtils,
-  ONVIF.Constant.Error, ONVIF.Types, IdAuthenticationDigest, Winsock, XmlDoc,
-  XmlIntf, XMLDom, System.Math, System.NetConsts, ONVIF.Structure.Device,ONVIF.PTZ,
-  ONVIF.Structure.Profile, System.Net.HttpClient, System.net.UrlClient,
-  ONVIF.Structure.Capabilities,  ONVIF.XML.Utils;
+  System.Classes, System.SysUtils, System.SyncObjs, System.Messaging, ONVIF.Intf,
+  ONVIF.Structure.Common, ONVIF.SOAP.Builder, System.IOUtils, Soap.XSBuiltIns,
+  ONVIF.Imaging, ActiveX, System.DateUtils, ONVIF.Constant.Error, ONVIF.Types,
+  IdAuthenticationDigest, Winsock, XmlDoc, XmlIntf, XMLDom, System.Math,
+  System.NetConsts, ONVIF.Structure.Device, ONVIF.PTZ, ONVIF.Structure.Profile,
+  System.Net.HttpClient, System.net.UrlClient, ONVIF.Structure.Capabilities,
+  ONVIF.XML.Utils;
 
 CONST
       {Imaging}
@@ -46,31 +47,12 @@ CONST
 Type
 
   {   
-    TODO 
-      - PresetTour
+    TODO LIST 
+      
       - Recoding
-      - Imaging 
-         -- Saturation, contrast ecc
-         -- IRCut 
-         -- IRIS 
-         -- Focus
-              -- Relative
-         others --> https://www.onvif.org/specs/srv/img/ONVIF-Imaging-Service-Spec.pdf?441d4a&441d4a
+        
+      - Events A device supporting PTZ service dispatchs events listed in this chapter through the event 
 
-
-        -- Move AbsoluteMove,RelativeMove
-        -- GetServiceCapabilities 
-            --- Flip: Indicates whether or not E-Flip is supported.
-            --- Reverse: Indicates whether or not reversing of PT control direction is supported.
-            --- GetCompatibleConfigurations: Indicates the support for GetCompatibleConfigurations command.
-            --- MoveStatus Indicates that the PTZStatus includes MoveStatus information.
-            --- StatusPosition Indicates that the PTZStatus includes Position information.   
-        -- Events A device supporting PTZ service dispatchs events listed in this chapter through the event 
-        -- PresetTours
-        others --> https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v1712.pdf?441d4a&441d4a
-               --> https://www.onvif.org/specs/srv/ptz/ONVIF-PTZ-Service-Spec-v221.pdf
-
-      https://www.onvif.org/specs/core/ONVIF-Core-Specification.pdf  
       - PRofile parser in record
         -- AudioEncoderConfiguration  : TAudioEncoderConfiguration;
         -= VideoAnalyticsConfiguration: TVideoAnalyticsConfiguration;
@@ -145,6 +127,7 @@ Type
     FImaging                 : TONVIFImagingManager;
     FNetworkInterface        : TNetworkInterface;
     FSystemDateTime          : TONVIFSystemDateAndTime;
+    FONVIFProxySettings      : TONVIFProxySettings;
     {Event}
     FOnWriteLog              : TEventWriteLog;
     FOnReadInfoComplete      : TNotifyEvent; 
@@ -462,11 +445,11 @@ Type
     ///   True if the operation is executed successfully; False otherwise.
     /// </returns>
     function GetProfiles: Boolean;
-
+    property ProxySettings           : TONVIFProxySettings     read FONVIFProxySettings                  write FONVIFProxySettings;
     /// <summary>
     ///   Gets or sets the speed parameter for PTZ operations.
     /// </summary>                                          
-    property Speed                   : Byte                   read GetSpeed                              write SetSpeed;
+    property Speed                   : Byte                    read GetSpeed                             write SetSpeed;
 
     /// <summary>
     ///   Gets or sets the URL of the ONVIF service.
@@ -643,6 +626,7 @@ begin
   inherited Create(nil);
   FSOAPBuilder            := TONVIFSOAPBuilder.Create(aLogin,aPassword);
   FSaveResponseOnDisk     := False;
+  FONVIFProxySettings     := TONVIFProxySettings.Create;
   FDateTimeDevice         := 0;
   FPathFileResponseOnDisk := 'DumpResponse.log';
   FIsFixedToken           := not aToken.IsEmpty;
@@ -656,6 +640,8 @@ end;
 
 destructor TONVIFManager.Destroy;
 begin
+  Reset;
+  FreeAndNil(FONVIFProxySettings);
   FreeAndNil(FExcludeReuqest);
   FreeAndNil(FSOAPBuilder);
   FreeAndNil(FImaging);
@@ -671,31 +657,7 @@ end;
 
 procedure TONVIFManager.ResetSystemDateAndTime;
 begin
-  // Resetta DateTimeType
-  FSystemDateTime.DateTimeType               := String.Empty;
-
-  // Resetta DaylightSavings
-  FSystemDateTime.DaylightSavings            := False;
-
-
-  // Resetta TimeZone
-  FSystemDateTime.TimeZone.TZ                := String.Empty;
-
-  // Resetta UTCDateTime
-  FSystemDateTime.UTCDateTime.Time.Hour      := 0;
-  FSystemDateTime.UTCDateTime.Time.Minute    := 0;
-  FSystemDateTime.UTCDateTime.Time.Second    := 0;
-  FSystemDateTime.UTCDateTime.Date.Year      := 0;
-  FSystemDateTime.UTCDateTime.Date.Month     := 0;
-  FSystemDateTime.UTCDateTime.Date.Day       := 0;
-
-  // Resetta LocalDateTime
-  FSystemDateTime.LocalDateTime.Time.Hour    := 0;
-  FSystemDateTime.LocalDateTime.Time.Minute  := 0;
-  FSystemDateTime.LocalDateTime.Time.Second  := 0;
-  FSystemDateTime.LocalDateTime.Date.Year    := 0;
-  FSystemDateTime.LocalDateTime.Date.Month   := 0;
-  FSystemDateTime.LocalDateTime.Date.Day     := 0;
+  FSystemDateTime := Default(TONVIFSystemDateAndTime);
 end;
 
 function TONVIFManager.GetRecording:Boolean;
@@ -814,6 +776,7 @@ end;
 procedure TONVIFManager.ReadInfo;
 begin
   Try
+    FSOAPBuilder.ResetDateTimeDevice;
     GetSystemDateTime;
     if GetCapabilities then
     begin    
@@ -868,7 +831,8 @@ end;
 procedure TONVIFManager.SetTokenImagingByPTZToken;
 var I: Integer;
 begin
-
+  FSOAPBuilder.ResetDateTimeDevice;
+  GetSystemDateTime;
   if FCapabilities.Imaging.XAddr.Trim.IsEmpty then
   begin
     {$REGION 'Log'}
@@ -943,9 +907,12 @@ begin
     ONVIF_ERROR_SOAP_NOBODY                        : result := 'Body SOAP node not found';
     ONVIF_ERROR_SOAP_FAULTCODE_NOT_FOUND           : Result := 'SOAP Fault code not found';
     {PTZ}
+    
     ONVIF_ERROR_PTZ_INVALID_PRESET_INDEX           : Result := 'Index of preset is out of range';
     ONVIF_ERROR_PTZ_TOKEN_IS_EMPTY                 : Result := 'PTZ token is empty';
+    ONVIF_ERROR_PTZ_PRESET_RESPONSE_EMPTY          : Result := 'New preset name: response is empty';
     ONVIF_ERROR_PTZ_PRESETNAME_IS_EMPTY            : Result := 'Preset name is empty';
+    ONVIF_ERROR_PTZ_PRESETNAME_IS_DUPLICATE        : Result := 'Preset name is duplicate';
     ONVIF_ERROR_PTZ_HOME_COMMAND_NOT_SUPPORTED     : Result := 'Home command is not supported by camera';
     ONVIF_ERROR_PTZ_MAX_PRESET                     : Result := 'Maximum number of presets reached';
     ONVIF_ERROR_PTZ_MOVE_CONTINUOUS_NOT_SUPPORTED  : Result := 'Continuous mode not supported by camera';
@@ -1161,8 +1128,6 @@ var LResultStr         : String;
     LTmpStr            : string;  
     LTmpStrSplit       : string;     
 begin
-  Result := false;
-
   ResetCapabilities;
   Result := ExecuteRequest(atDeviceService,'TONVIFManager.GetCapabilities',FSOAPBuilder.PrepareGetCapabilitiesRequest, LResultStr);
 
@@ -1262,8 +1227,7 @@ begin
           FCapabilities.Device.IO.RelayOutputs       := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1,'RelayOutputs'),-1);          
           LNodeTmp2 := TONVIFXMLUtils.RecursiveFindNode(LNodeTmp1,'Extension');      
           if Assigned(LNodeTmp2) then
-          begin            
-            LCountAux                       := 0;
+          begin                        
             for X := 0 to LNodeTmp2.ChildNodes.Count -1 do
             begin  
               if SameText(LNodeTmp2.ChildNodes[X].DOMNode.localName,'AuxiliaryCommands') then
@@ -1749,8 +1713,7 @@ begin
     LOutStream := TStringStream.Create;
     try
       Try
-        Result        := ExecuteRequest(LUrl, LInStream, LOutStream);
-        
+        Result := ExecuteRequest(LUrl, LInStream, LOutStream);        
       Except on E : Exception do
         begin
           FLastStatusCode := ONVIF_ERROR_DELPHI_EXCEPTION;
@@ -1764,6 +1727,7 @@ begin
       End;    
       
       aAnswer := LOutStream.DataString; 
+      
       if FLastStatusCode <> ONVIF_ERROR_DELPHI_EXCEPTION then 
         FLastResponse := aAnswer; 
 
@@ -1813,6 +1777,14 @@ begin
   Try
     With LHTTPClient do
     begin
+      // Set proxy details if provided
+      // Set proxy details if provided
+      if (not FONVIFProxySettings.Address.IsEmpty) and (FONVIFProxySettings.Port > 0) then
+      begin
+        ProxySettings := TProxySettings.Create(FONVIFProxySettings.Address, FONVIFProxySettings.Port,
+          FONVIFProxySettings.Username, FONVIFProxySettings.Password);
+      end;
+    
       CustHeaders.Clear;
       AllowCookies          := True;
       HandleRedirects       := True;
@@ -1831,6 +1803,8 @@ end;
 
 procedure TONVIFManager.Reset;
 begin
+
+  ResetSystemDateAndTime;
   ResetDevice;
   ResetProfiles;
   ResetCapabilities;
@@ -1841,106 +1815,38 @@ end;
 
 Procedure TONVIFManager.ResetNetworkInterface;
 begin
-  FNetworkInterface.Token                              := String.Empty;
-  FNetworkInterface.Enabled                            := False;
-  FNetworkInterface.Info.Name                          := String.Empty;
-  FNetworkInterface.Info.HwAddress                     := String.Empty;
+  FNetworkInterface                                    := Default(TNetworkInterface);
+
   FNetworkInterface.Info.MTU                           := -1;
-  FNetworkInterface.Link.AdminSettings.AutoNegotiation := False;
   FNetworkInterface.Link.AdminSettings.Speed           := -1;
-  FNetworkInterface.Link.AdminSettings.Duplex          := String.Empty;
-  FNetworkInterface.Link.OperSettings.AutoNegotiation  := False;
-  FNetworkInterface.Link.OperSettings.Duplex           := String.Empty;
   FNetworkInterface.Link.OperSettings.Speed            := -1;
   FNetworkInterface.Link.InterfaceType                 := -1;
-  FNetworkInterface.IPv4.Enabled                       := False;
-  FNetworkInterface.IPv4.Config.Manual.Address         := String.Empty;  
   FNetworkInterface.IPv4.Config.Manual.PrefixLength    := -1;
-  FNetworkInterface.IPv4.Config.DHCP                   := False;
-  FNetworkInterface.IPv6.Enabled                       := False;
-  FNetworkInterface.IPv6.Config.AcceptRouterAdvert     := False;
-  FNetworkInterface.IPv6.Config.DHCP                   := String.Empty;   
-  FNetworkInterface.IPv6.Config.LinkLocal.Address      := String.Empty; 
   FNetworkInterface.IPv6.Config.LinkLocal.PrefixLength := -1;
-  FNetworkInterface.IPv6.Config.FromDHCP.Address       := String.Empty; 
   FNetworkInterface.IPv6.Config.FromDHCP.PrefixLength  := -1;
-
 end;
 
 Procedure TONVIFManager.ResetProfiles;
 begin
- SetLength(FProfiles,0);
+  SetLength(FProfiles,0);
 end;
 
 Procedure TONVIFManager.ResetDevice;
 begin
-  FDevice.Manufacturer    := String.Empty;
-  FDevice.Model           := String.Empty;
-  FDevice.FirmwareVersion := String.Empty;
-  FDevice.SerialNumber    := String.Empty;
-  FDevice.HardwareId      := String.Empty;
-  FDevice.XAddr           := String.Empty;
+  FDevice := Default(TDeviceInformation);
 end;
 
 procedure TONVIFManager.ResetCapabilities;
 begin
-  {Analytics}
-  FCapabilities.Analytics.XAddr                                      := String.Empty;
-  FCapabilities.Analytics.RuleSupport                                := False;
-  FCapabilities.Analytics.AnalyticsModuleSupport                     := False;
-
-  
-  {device}
-  FCapabilities.Device.XAddr                                         := String.Empty;
-  FCapabilities.Device.Network.IPFilter                              := False;
-  FCapabilities.Device.Network.ZeroConfiguration                     := False;  
-  FCapabilities.Device.Network.IPVersion6                            := False;   
-  FCapabilities.Device.Network.DynDNS                                := False;  
-  FCapabilities.Device.Network.Extension.Dot11Configuration          := False;          
-  FCapabilities.Device.Network.Extension.DHCPv6                      := False;          
+  FCapabilities                                                      := Default(TCapabilitiesONVIF);
   FCapabilities.Device.Network.Extension.Dot1XConfigurations         := -1;              
-  FCapabilities.Device.System.DiscoveryResolve                       := False;
-  FCapabilities.Device.System.DiscoveryBye                           := False;
-  FCapabilities.Device.System.RemoteDiscovery                        := False;
-  FCapabilities.Device.System.SystemBackup                           := False;
-  FCapabilities.Device.System.SystemLogging                          := False;        
-  FCapabilities.Device.System.FirmwareUpgrade                        := False;          
-  FCapabilities.Device.System.Extension.HttpFirmwareUpgrade          := False;          
-  FCapabilities.Device.System.Extension.HttpSystemBackup             := False;          
-  FCapabilities.Device.System.Extension.HttpSystemLogging            := False;          
-  FCapabilities.Device.System.Extension.HttpSupportInformation       := False;          
   SetLength(FCapabilities.Device.System.SupportedVersions,0);
 
   FCapabilities.Device.IO.InputConnectors                            := -1;
   FCapabilities.Device.IO.RelayOutputs                               := -1;
   SetLength(FCapabilities.Device.IO.Extension.AuxiliaryCommands,0);
 
-  {event}
-  FCapabilities.Events.XAddr                                         := String.Empty;
-  FCapabilities.Events.WSSubscriptionPolicySupport                   := False;
-  FCapabilities.Events.WSPullPointSupport                            := False;
-  FCapabilities.Events.WSPausableSubscriptionManagerInterfaceSupport := False; 
-  {PTZ}
-  FCapabilities.Imaging.XAddr                                        := String.Empty;
-
-  {Media}
-  FCapabilities.Media.XAddr                                          := String.Empty;
-  FCapabilities.Media.StreamingCapabilities.RTPMulticast             := False;
-  FCapabilities.Media.StreamingCapabilities.RTP_TCP                  := False;
-  FCapabilities.Media.StreamingCapabilities.RTP_RTSP_TCP             := False;    
-  {PTZ}
-  FCapabilities.PTZ.XAddr                                            := String.Empty;
-  {Extension}
-  FCapabilities.Extension.Search.XAddr                               := String.Empty;
-  FCapabilities.Extension.Search.MetadataSearch                      := False;
-  FCapabilities.Extension.Replay.XAddr                               := String.Empty;
-  FCapabilities.Extension.DeviceIO.XAddr                             := String.Empty;  
-  FCapabilities.Extension.Recording.XAddr                            := String.Empty;    
   FCapabilities.Extension.Recording.MaxStringLength                  := -1;    
-  FCapabilities.Extension.Recording.ReceiverSource                   := false;
-  FCapabilities.Extension.Recording.MediaProfileSource               := false;
-  FCapabilities.Extension.Recording.DynamicRecordings                := false;
-  FCapabilities.Extension.Recording.DynamicTracks                    := false;    
   FCapabilities.Extension.VideoSources                               := -1;  
   FCapabilities.Extension.VideoOutputs                               := -1;
   FCapabilities.Extension.AudioSources                               := -1;

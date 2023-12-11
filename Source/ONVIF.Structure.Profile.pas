@@ -588,11 +588,19 @@ Type
     VideoAnalyticsConfiguration: TVideoAnalyticsConfiguration;
     Extension                  : TExtension;
   end;   
+  PTProfile = ^TProfile;
     
   /// <summary>
   ///   Represents an array of ONVIF profiles.
   /// </summary>  
   TProfiles = TArray<TProfile>;
+
+  TStreamURI = record
+    Uri                 : String;
+    InvalidAfterConnect : Boolean;
+    InvalidAfterReboot  : Boolean;
+    Timeout             : String;
+  end;
 
 implementation
 

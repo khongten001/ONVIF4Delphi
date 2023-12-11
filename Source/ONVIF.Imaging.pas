@@ -39,11 +39,14 @@ uses
   
   {TODO LIST
 
-         -- Saturation, contrast ecc
-         -- IRCut 
-         -- IRIS 
+         -- Saturation, contrast ecc >
+         -- IRCut                    > > SetImagingSettings
+         -- IRIS                     >
+         
          -- Focus
               -- Relative
+
+              
          -- GetServiceCapabilities or in Device ? 
             --- Flip: Indicates whether or not E-Flip is supported.
             --- Reverse: Indicates whether or not reversing of PT control direction is supported.
@@ -664,8 +667,7 @@ begin
       FImagingOptions.Extension.NoiseReductionOptions  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LNodeTmp1, 'NoiseReductionOptions'), False);
     end;
 
-    Result := True;
-  
+    Result := True;  
   end;
 end;
 

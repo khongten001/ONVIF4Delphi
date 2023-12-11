@@ -219,6 +219,9 @@ Type
     ///   Procedure to reset PTZ status.
     /// </summary>    
     procedure ResetPTZStatus;
+
+  
+    
   public
     /// <summary>
     ///   Constructor for initializing a new instance of the ONVIF PTZ Manager.

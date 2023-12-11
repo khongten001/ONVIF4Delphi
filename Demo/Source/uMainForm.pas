@@ -123,6 +123,8 @@ type
       const aSystemDateTime: TONVIFSystemDateAndTime);
     procedure BuildImageOptionsTreeView(Node: TTreeNode;
       const aImageOptions: TImagingOptions);
+    procedure BuildStreamURITreeView(Node: TTreeNode;
+      const aStreamURI: TStreamURI);
   public
     { Public declarations }
   end;
@@ -260,6 +262,9 @@ begin
 
     for I := Low(FONVIFManager.Profiles) to High(FONVIFManager.Profiles) do      
       BuildProfileTreeView(LRootNode,FONVIFManager.Profiles[I]);
+
+    BuildStreamURITreeView(LRootNode,FONVIFManager.StreamURI);
+    BuildCapabilitiesTreeView(LRootNode,FONVIFManager.Capabilities);    
     BuildPTZNodeTreeView(LRootNode,FONVIFManager.PTZ.PTZNode);
     BuildImagingSettingsTreeView(LRootNode,FONVIFManager.Imaging.ImagingSettings); 
     BuildImageOptionsTreeView(LRootNode,FONVIFManager.Imaging.ImagingOptions);         
@@ -520,6 +525,28 @@ begin
     for LField in LTypeObj.GetFields do
     begin
       LValue := LField.GetValue(@aImageOptions);
+      processTValue(Node,LField,LValue);
+    end;
+  finally
+    LContext.Free;
+  end;
+end;
+
+procedure TForm1.BuildStreamURITreeView(Node: TTreeNode; const aStreamURI: TStreamURI);
+var LContext: TRttiContext;
+    LTypeObj: TRttiType;
+    LField  : TRttiField;
+    LValue  : TValue; 
+begin
+  Node := tv1.Items.AddChild(nil, 'StreamURI');
+
+  LContext := TRttiContext.Create;
+  try
+    LTypeObj := LContext.GetType(TypeInfo(TStreamURI));
+
+    for LField in LTypeObj.GetFields do
+    begin
+      LValue := LField.GetValue(@aStreamURI);
       processTValue(Node,LField,LValue);
     end;
   finally

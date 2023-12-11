@@ -33,7 +33,7 @@ uses
   System.Classes, System.SysUtils, System.SyncObjs, System.Messaging, ONVIF.Intf,
   ONVIF.Structure.Common, ONVIF.SOAP.Builder, System.IOUtils, Soap.XSBuiltIns,
   ONVIF.Imaging, ActiveX, System.DateUtils, ONVIF.Constant.Error, ONVIF.Types,
-  IdAuthenticationDigest, Winsock, XmlDoc, XmlIntf, XMLDom, System.Math,
+  IdAuthenticationDigest, Winsock, XmlDoc, XmlIntf, XMLDom, System.Math,Variants,
   System.NetConsts, ONVIF.Structure.Device, ONVIF.PTZ, ONVIF.Structure.Profile,
   System.Net.HttpClient, System.net.UrlClient, ONVIF.Structure.Capabilities,
   ONVIF.XML.Utils;
@@ -117,11 +117,13 @@ Type
     FSaveResponseOnDisk      : Boolean;
     FIsFixedToken            : Boolean;
     FLastStatusCode          : Integer;
+    FProfileIndex            : Integer;
     FSpeed                   : Byte;
     FDevice                  : TDeviceInformation;
     FSOAPBuilder             : TONVIFSOAPBuilder;  
     FExcludeReuqest          : TExcludeRequest;
     FProfiles                : TProfiles;    
+    FStreamURI               : TStreamURI;
     FCapabilities            : TCapabilitiesONVIF;
     FPTZ                     : TONVIFPTZManager;
     FImaging                 : TONVIFImagingManager;
@@ -349,6 +351,22 @@ Type
     /// </remarks>
     function GetSystemDateTime: Boolean;
     procedure ResetSystemDateAndTime;
+    
+    /// <summary>
+    /// This operation requests a URI that can be used to initiate a live media stream using RTSP as the control protocol. The returned URI shall remain valid indefinitely even if the profile is changed. The ValidUntilConnect, ValidUntilReboot and Timeout Parameter shall be set accordingly (ValidUntilConnect=false, ValidUntilReboot=false, timeout=PT0S).
+    /// 
+    /// The correct syntax for the StreamSetup element for these media stream setups defined in 5.1.1 of the streaming specification are as follows:
+    /// RTP unicast over UDP: StreamType = "RTP_unicast", TransportProtocol = "UDP"
+    /// RTP over RTSP over HTTP over TCP: StreamType = "RTP_unicast", TransportProtocol = "HTTP"
+    /// RTP over RTSP over TCP: StreamType = "RTP_unicast", TransportProtocol = "RTSP"
+    /// 
+    /// If a multicast stream is requested at least one of VideoEncoderConfiguration, AudioEncoderConfiguration and MetadataConfiguration shall have a valid multicast setting.
+    /// 
+    /// For full compatibility with other ONVIF services a device should not generate Uris longer than 128 octets.    
+    /// </summary>
+    function GetStreamURI : Boolean;
+    procedure ResetStreamURI;
+    function GetCurrentProfile: PTProfile;
 
   public
     /// <summary>
@@ -531,7 +549,7 @@ Type
     /// </remarks>    
     property LastResponse             : String                   read FLastResponse; 
 
-    
+    property CurrentProfile           : PTProfile                read GetCurrentProfile;    
     /// <summary>
     /// Gets or sets the exclusion request configuration.
     /// </summary>
@@ -577,7 +595,16 @@ Type
     ///   Use this property to retrieve the profiles associated with the ONVIF communication.
     /// </remarks>    
     property Profiles                 : TProfiles                read FProfiles;  
+
+    /// <summary>
+    ///   Gets the profiles associated with the ONVIF communication.
+    /// </summary>
+    /// <remarks>
+    ///   Use this property to retrieve the profiles associated with the ONVIF communication.
+    /// </remarks>    
+    property StreamURI                 : TStreamURI                read FStreamURI;  
     
+  
     /// <summary>
     ///   Represents the ONVIF capabilities of the device.
     /// </summary>
@@ -675,6 +702,40 @@ begin
     {$ENDREGION}  
   end;
 end;
+
+procedure TONVIFManager.ResetStreamURI;
+begin
+   FStreamURI := Default(TStreamURI);
+end;
+
+Function TONVIFManager.GetStreamURI:Boolean;
+var LResultStr : String;
+    LBodyNode  : IXMLNode;
+    LNodeTmp1  : IXMLNode;
+    LNodeTmp2  : IXMLNode;    
+begin
+  ResetStreamURI;  
+  if not Assigned(CurrentProfile) then Exit;
+  
+  Result := ExecuteRequest(atMedia,'TONVIFManager.GetStreamURI',FSOAPBuilder.PrepareGetStreamURI(CurrentProfile.Token), LResultStr);
+  if Result then
+  begin
+    {$REGION 'Log'}
+    {TSI:IGNORE ON}
+        DoWriteLog('TONVIFManager.GetStreamURI',LResultStr,tpLivXMLResp,true);      
+    {TSI:IGNORE OFF}
+    {$ENDREGION}
+    
+    LBodyNode := GetBodyNode(LResultStr);
+    if not Assigned(LBodyNode) then Exit;
+    LBodyNode                      := TONVIFXMLUtils.RecursiveFindNode(LBodyNode, 'MediaUri');
+    FStreamURI.Uri                 := TONVIFXMLUtils.GetChildNodeValue(LBodyNode, 'Uri');
+    FStreamURI.InvalidAfterConnect := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LBodyNode, 'InvalidAfterConnect'),False);
+    FStreamURI.InvalidAfterReboot  := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LBodyNode, 'InvalidAfterReboot'),False);
+    FStreamURI.Timeout             := TONVIFXMLUtils.GetChildNodeValue(LBodyNode, 'Timeout');            
+  end;
+end;
+
 
 function TONVIFManager.GetSystemDateTime:Boolean;
 CONST MAX_SEC_TOLERANCE = 60;
@@ -828,21 +889,13 @@ begin
   FSpeed := Value;
 end;
 
+
 procedure TONVIFManager.SetTokenImagingByPTZToken;
 var I: Integer;
 begin
   FSOAPBuilder.ResetDateTimeDevice;
   GetSystemDateTime;
-  if FCapabilities.Imaging.XAddr.Trim.IsEmpty then
-  begin
-    {$REGION 'Log'}
-    {TSI:IGNORE ON}
-        DoWriteLog('TONVIFManager.SetTokenImagingByPTZToken','Imaging not supported by camera',tpLivInfo);      
-    {TSI:IGNORE OFF}
-    {$ENDREGION}
-     Exit;
-  end;
-  
+
   {$REGION 'Log'}
   {TSI:IGNORE ON}
       DoWriteLog('TONVIFManager.SetTokenImagingByPTZToken',Format('Search PTZ Token  [%s]',[PTZ.Token.Trim]),tpLivInfo,true);      
@@ -858,9 +911,23 @@ begin
           DoWriteLog('TONVIFManager.SetTokenImagingByPTZToken',Format('New Token found [%s]',[FProfiles[I].VideoSourceConfiguration.token]),tpLivInfo,true);      
       {TSI:IGNORE OFF}
       {$ENDREGION}
-    
+      FProfileIndex := I;
+
+      GetStreamURI;   
+      if FCapabilities.Imaging.XAddr.Trim.IsEmpty then
+      begin
+        {$REGION 'Log'}
+        {TSI:IGNORE ON}
+            DoWriteLog('TONVIFManager.SetTokenImagingByPTZToken','Imaging not supported by camera',tpLivInfo);      
+        {TSI:IGNORE OFF}
+        {$ENDREGION}
+        Exit;
+      end;
+  
+         
       if not FProfiles[I].VideoSourceConfiguration.token.IsEmpty then
       begin
+
         if (FProfiles[I].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING) or // How can I identify without using constants?
            (FProfiles[I].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING_2)
         then
@@ -1383,6 +1450,14 @@ begin
     {$ENDREGION}    
 end;
 
+function TONVIFManager.GetCurrentProfile: PTProfile;
+begin
+  Result := nil;
+  if InRange(FProfileIndex,0,Length(FProfiles)-1) then
+    Result := @FProfiles[FProfileIndex]; 
+
+end;
+
 function TONVIFManager.GetProfiles: Boolean;
 var LResultStr         : String;
     LBodyNode          : IXMLNode;
@@ -1392,7 +1467,6 @@ var LResultStr         : String;
     LChildNodeNode2    : IXMLNode;
     LChildNodeNode3    : IXMLNode;
     I                  : Integer;
-    LProfile           : TProfile;
     LCurrentIndex      : integer;
     LSetForDefault     : Boolean;  
     LSetVSourceToken   : Boolean; 
@@ -1401,18 +1475,18 @@ var LResultStr         : String;
 
     Procedure SetVideoSourceToken;
     begin
-      if not LProfile.VideoSourceConfiguration.token.IsEmpty then
+      if not FProfiles[LCurrentIndex].VideoSourceConfiguration.token.IsEmpty then
       begin
-        if (LProfile.VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING) or  // How can I identify without using constants?
-           (LProfile.VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING_2) 
+        if (FProfiles[LCurrentIndex].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING) or  // How can I identify without using constants?
+           (FProfiles[LCurrentIndex].VideoSourceConfiguration.token.Trim = DEFAULT_TOKEN_IMAGING_2) 
         then
           FImaging.Token  := Format(AUTO_TOKEN_IMAGING,[LCurrentIndex+1])
         else
-          FImaging.Token  := LProfile.VideoSourceConfiguration.token.Trim;
+          FImaging.Token  := FProfiles[LCurrentIndex].VideoSourceConfiguration.token.Trim;
 
         {$REGION 'Log'}
         {TSI:IGNORE ON}
-            DoWriteLog('TONVIFManager.GetProfiles',Format('Set Imaging Token to [%s], VideoSourceConfiguration token [%s] profile token [%s]',[FImaging.Token ,LProfile.VideoSourceConfiguration.token,LProfile.token]),tpLivInfo,true);      
+            DoWriteLog('TONVIFManager.GetProfiles',Format('Set Imaging Token to [%s], VideoSourceConfiguration token [%s] profile token [%s]',[FImaging.Token ,FProfiles[LCurrentIndex].VideoSourceConfiguration.token,FProfiles[LCurrentIndex].token]),tpLivInfo,true);      
         {TSI:IGNORE OFF}
         {$ENDREGION}                
         LTokenPtzSetted := False;
@@ -1449,31 +1523,30 @@ begin
       LTokenPtzSetted  := False;      
       for I := 0 to LProfilesNode.ChildNodes.Count -1 do
       begin  
-
-        LProfile.token := String(LProfilesNode.ChildNodes[I].Attributes['token']);  
-        LProfile.fixed := Boolean(StrToBoolDef(TONVIFXMLUtils.GetAttribute(LProfilesNode.ChildNodes[I],'fixed'), False));
-        LProfile.name  := TONVIFXMLUtils.GetChildNodeValue(LProfilesNode.ChildNodes[I],'tt:Name');
+        FProfiles[LCurrentIndex].token := String(LProfilesNode.ChildNodes[I].Attributes['token']);  
+        FProfiles[LCurrentIndex].fixed := Boolean(StrToBoolDef(TONVIFXMLUtils.GetAttribute(LProfilesNode.ChildNodes[I],'fixed'), False));
+        FProfiles[LCurrentIndex].name  := TONVIFXMLUtils.GetChildNodeValue(LProfilesNode.ChildNodes[I],'tt:Name');
         
         // Continue parsing TVideoSourceConfiguration
         LChildNodeRoot := TONVIFXMLUtils.RecursiveFindNode(LProfilesNode.ChildNodes[I],'VideoSourceConfiguration');
         if Assigned(LChildNodeRoot) then
         begin
 
-          LProfile.VideoSourceConfiguration.token       := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
+          FProfiles[LCurrentIndex].VideoSourceConfiguration.token       := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
           if Assigned(FOnSourceiideoTokenFound) then
-            FOnSourceiideoTokenFound(LProfile.name,LProfile.VideoSourceConfiguration.token,LSetVSourceToken);
+            FOnSourceiideoTokenFound(FProfiles[LCurrentIndex].name,FProfiles[LCurrentIndex].VideoSourceConfiguration.token,LSetVSourceToken);
           
-          LProfile.VideoSourceConfiguration.name        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
-          LProfile.VideoSourceConfiguration.UseCount    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
-          LProfile.VideoSourceConfiguration.SourceToken := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'SourceToken');
+          FProfiles[LCurrentIndex].VideoSourceConfiguration.name        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
+          FProfiles[LCurrentIndex].VideoSourceConfiguration.UseCount    := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
+          FProfiles[LCurrentIndex].VideoSourceConfiguration.SourceToken := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'SourceToken');
             
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'Bounds');          
           if Assigned(LChildNodeNode) then
           begin
-            LProfile.VideoSourceConfiguration.Bounds.x      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'x'), -1);
-            LProfile.VideoSourceConfiguration.Bounds.y      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'y'), -1);
-            LProfile.VideoSourceConfiguration.Bounds.width  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'width'), -1);
-            LProfile.VideoSourceConfiguration.Bounds.height := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'height'), -1);
+            FProfiles[LCurrentIndex].VideoSourceConfiguration.Bounds.x      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'x'), -1);
+            FProfiles[LCurrentIndex].VideoSourceConfiguration.Bounds.y      := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'y'), -1);
+            FProfiles[LCurrentIndex].VideoSourceConfiguration.Bounds.width  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'width'), -1);
+            FProfiles[LCurrentIndex].VideoSourceConfiguration.Bounds.height := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeNode,'height'), -1);
           end;
         end;
         
@@ -1481,45 +1554,45 @@ begin
         LChildNodeRoot := TONVIFXMLUtils.RecursiveFindNode(LProfilesNode.ChildNodes[I],'VideoEncoderConfiguration');   
         if Assigned(LChildNodeRoot) then
         begin
-          LProfile.VideoEncoderConfiguration.token           := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
-          LProfile.VideoEncoderConfiguration.name            := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
-          LProfile.VideoEncoderConfiguration.UseCount        := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
-          LProfile.VideoEncoderConfiguration.Encoding        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Encoding');
-          LProfile.VideoEncoderConfiguration.Quality         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Quality'),-1);
-          LProfile.VideoEncoderConfiguration.SessionTimeout  := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'SessionTimeout');
+          FProfiles[LCurrentIndex].VideoEncoderConfiguration.token           := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
+          FProfiles[LCurrentIndex].VideoEncoderConfiguration.name            := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Name'); 
+          FProfiles[LCurrentIndex].VideoEncoderConfiguration.UseCount        := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'UseCount'), -1);
+          FProfiles[LCurrentIndex].VideoEncoderConfiguration.Encoding        := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Encoding');
+          FProfiles[LCurrentIndex].VideoEncoderConfiguration.Quality         := StrToFloatLocale(TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'Quality'),-1);
+          FProfiles[LCurrentIndex].VideoEncoderConfiguration.SessionTimeout  := TONVIFXMLUtils.GetChildNodeValue(LChildNodeRoot, 'SessionTimeout');
           
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'Resolution');
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.Resolution.width  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Width'), -1);
-            LProfile.VideoEncoderConfiguration.Resolution.height := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Height'), -1);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.Resolution.width  := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Width'), -1);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.Resolution.height := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Height'), -1);
           end;
           
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'RateControl');  
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.RateControl.FrameRateLimit   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'FrameRateLimit'), -1);
-            LProfile.VideoEncoderConfiguration.RateControl.EncodingInterval := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'EncodingInterval'), -1);
-            LProfile.VideoEncoderConfiguration.RateControl.BitrateLimit     := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'BitrateLimit'), -1);            
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.RateControl.FrameRateLimit   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'FrameRateLimit'), -1);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.RateControl.EncodingInterval := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'EncodingInterval'), -1);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.RateControl.BitrateLimit     := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'BitrateLimit'), -1);            
           end;   
 
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'H264');    
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.H264.GovLength   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'GovLength'), -1);
-            LProfile.VideoEncoderConfiguration.H264.H264Profile := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'H264Profile')
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.H264.GovLength   := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'GovLength'), -1);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.H264.H264Profile := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'H264Profile')
           end;   
 
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'Multicast');    
           if Assigned(LChildNodeNode) then
           begin     
-            LProfile.VideoEncoderConfiguration.Multicast.Port      := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Port'), -1);
-            LProfile.VideoEncoderConfiguration.Multicast.TTL       := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'TTL'), -1);            
-            LProfile.VideoEncoderConfiguration.Multicast.AutoStart := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'AutoStart'),false);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.Multicast.Port      := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Port'), -1);
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.Multicast.TTL       := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'TTL'), -1);            
+            FProfiles[LCurrentIndex].VideoEncoderConfiguration.Multicast.AutoStart := StrToBoolDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'AutoStart'),false);
 
             LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'Address'); 
             if Assigned(LChildNodeNode) then
-              LProfile.VideoEncoderConfiguration.Multicast.Address.TypeAddr := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Type')
+              FProfiles[LCurrentIndex].VideoEncoderConfiguration.Multicast.Address.TypeAddr := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Type')
           end;                                                   
         end;
         
@@ -1527,8 +1600,8 @@ begin
         LChildNodeRoot := TONVIFXMLUtils.RecursiveFindNode(LProfilesNode.ChildNodes[I],'PTZConfiguration');
         if Assigned(LChildNodeRoot) then
         begin
-          LProfile.PTZConfiguration.token := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
-          LNewToken := LProfile.token;
+          FProfiles[LCurrentIndex].PTZConfiguration.token := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'token');
+          LNewToken := FProfiles[LCurrentIndex].token;
        {   if ( LProfile.PTZConfiguration.token = 'PTZToken') or
              ( LProfile.PTZConfiguration.token = 'PtzConf1')   // How can I identify without using constants?
           then
@@ -1537,23 +1610,24 @@ begin
             LNewToken := LProfile.PTZConfiguration.token;}
             
           if Assigned(FOnPTZTokenFound) then
-            FOnPTZTokenFound(LProfile.name,LNewToken,LSetForDefault);
+            FOnPTZTokenFound(FProfiles[LCurrentIndex].name,LNewToken,LSetForDefault);
             
           if LSetForDefault then
           begin
             {$REGION 'Log'}
             {TSI:IGNORE ON}
-                DoWriteLog('TONVIFManager.GetProfiles',Format('Set PTZ Token to [%s], PTZConfiguration token [%s] profile token [%s]',[PTZ.Token ,LProfile.PTZConfiguration.token,LProfile.token]),tpLivInfo,true);      
+                DoWriteLog('TONVIFManager.GetProfiles',Format('Set PTZ Token to [%s], PTZConfiguration token [%s] profile token [%s]',[PTZ.Token ,FProfiles[LCurrentIndex].PTZConfiguration.token,FProfiles[LCurrentIndex].token]),tpLivInfo,true);      
             {TSI:IGNORE OFF}
             {$ENDREGION}            
             PTZ.Token       := LNewToken;
             LTokenPtzSetted := True;
+            FProfileIndex   := LCurrentIndex;
           end;
           
           LSetForDefault := False;         
-          LProfile.PTZConfiguration.Name      := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Name');
-          LProfile.PTZConfiguration.UseCount  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'UseCount'),-1);          
-          LProfile.PTZConfiguration.NodeToken := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'NodeToken');
+          FProfiles[LCurrentIndex].PTZConfiguration.Name      := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode,'Name');
+          FProfiles[LCurrentIndex].PTZConfiguration.UseCount  := StrToIntDef(TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'UseCount'),-1);          
+          FProfiles[LCurrentIndex].PTZConfiguration.NodeToken := TONVIFXMLUtils.GetAttribute(LChildNodeRoot,'NodeToken');
           
           LChildNodeNode                      := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'DefaultPTZSpeed');
           if Assigned(LChildNodeNode) then
@@ -1561,12 +1635,12 @@ begin
             LChildNodeNode2 :=TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'PanTilt'); 
             if Assigned(LChildNodeNode2) then            
             begin
-              LProfile.PTZConfiguration.DefaultPTZSpeed.PanTilt.x := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'X'),-1);
-              LProfile.PTZConfiguration.DefaultPTZSpeed.PanTilt.Y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Y'),-1);              
+              FProfiles[LCurrentIndex].PTZConfiguration.DefaultPTZSpeed.PanTilt.x := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'X'),-1);
+              FProfiles[LCurrentIndex].PTZConfiguration.DefaultPTZSpeed.PanTilt.Y := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Y'),-1);              
             end;  
             LChildNodeNode2 :=TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'Zoom'); 
             if Assigned(LChildNodeNode2) then            
-              LProfile.PTZConfiguration.DefaultPTZSpeed.Zoom := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Zoom'),-1);
+              FProfiles[LCurrentIndex].PTZConfiguration.DefaultPTZSpeed.Zoom := StrToFloatLocale(TONVIFXMLUtils.GetAttribute(LChildNodeNode2,'Zoom'),-1);
           end;
           
           LChildNodeNode := TONVIFXMLUtils.RecursiveFindNode(LChildNodeRoot,'PanTiltLimits');
@@ -1575,20 +1649,20 @@ begin
             LChildNodeNode2 :=TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'Range'); 
             if Assigned(LChildNodeNode2) then  
             begin          
-              LProfile.PTZConfiguration.PanTiltLimits.Range.URI := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode2,'URI');
+              FProfiles[LCurrentIndex].PTZConfiguration.PanTiltLimits.Range.URI := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode2,'URI');
               LChildNodeNode3                                   := TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode2,'XRange'); 
 
               if Assigned(LChildNodeNode3) then
               begin
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);                 
+                 FProfiles[LCurrentIndex].PTZConfiguration.PanTiltLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
+                 FProfiles[LCurrentIndex].PTZConfiguration.PanTiltLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);                 
               end;
               
               LChildNodeNode3  := TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode2,'YRange'); 
               if Assigned(LChildNodeNode3) then
               begin
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
-                 LProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);                 
+                 FProfiles[LCurrentIndex].PTZConfiguration.PanTiltLimits.Range.YRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
+                 FProfiles[LCurrentIndex].PTZConfiguration.PanTiltLimits.Range.YRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);                 
               end;                            
             end;              
           end;  
@@ -1599,13 +1673,13 @@ begin
             LChildNodeNode2 :=TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode,'Range'); 
             if Assigned(LChildNodeNode2) then  
             begin 
-              LProfile.PTZConfiguration.ZoomLimits.Range.URI := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode2,'URI');;
+              FProfiles[LCurrentIndex].PTZConfiguration.ZoomLimits.Range.URI := TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode2,'URI');;
               LChildNodeNode3                                := TONVIFXMLUtils.RecursiveFindNode(LChildNodeNode2,'XRange'); 
 
               if Assigned(LChildNodeNode3) then
               begin
-                 LProfile.PTZConfiguration.ZoomLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
-                 LProfile.PTZConfiguration.ZoomLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);
+                 FProfiles[LCurrentIndex].PTZConfiguration.ZoomLimits.Range.XRange.Min := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Min'), -1);
+                 FProfiles[LCurrentIndex].PTZConfiguration.ZoomLimits.Range.XRange.Max := StrToIntDef(TONVIFXMLUtils.GetChildNodeValue(LChildNodeNode3,'Max'), -1);
               end;              
             end          
           end;        
@@ -1619,7 +1693,7 @@ begin
         
         // TODO Continue parsing TExtension                
         
-        FProfiles[LCurrentIndex] := LProfile;
+        
         if LTokenPtzSetted or LSetVSourceToken then
           SetVideoSourceToken;
         Inc(LCurrentIndex);
@@ -1828,6 +1902,7 @@ end;
 
 Procedure TONVIFManager.ResetProfiles;
 begin
+  FProfileIndex := -1;
   SetLength(FProfiles,0);
 end;
 

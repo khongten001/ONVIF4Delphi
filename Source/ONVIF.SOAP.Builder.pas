@@ -103,20 +103,18 @@ Type
     /// <returns>The ONVIF request for getting system date and time.</returns>   
     function PrepareGetSystemDateTimeRequest: String; 
     
-
     /// <summary>
     /// Prepares an ONVIF request to retrieve recording information.
     /// </summary>
     /// <returns>The ONVIF request for getting recording information.</returns>
-    function PrepareGetRecording: String;             //media
-
+    function PrepareGetRecording: String;             
        
     /// <summary>
     /// Prepares an ONVIF request to retrieve the stream URI for a specific token.
     /// </summary>
     /// <param name="aToken">The token associated with the stream.</param>
     /// <returns>The ONVIF request for getting stream URI.</returns>
-    function PrepareGetStreamURI(const aToken: String): String; //media
+    function PrepareGetStreamURI(const aToken: String): String; 
 
     /// <summary>
     ///   Prepares a GetCapabilities request for ONVIF communication.
@@ -522,20 +520,15 @@ end;
 
 function TONVIFSOAPBuilder.PrepareGetStreamURI(const aToken:String): String;
 const GET_STREAMURI = '<trt:GetStreamUri> '+
-                      '<trt:StreamSetup '+
-                      'xsi:type="tt:StreamSetup"> '+
-                      '<tt:Stream> '+
-                      'RTP-Unicast '+
-                      '</tt:Stream> '+
-                      '<tt:Transport '+
-                      'xsi:type="tt:Transport"> '+
-                      '<tt:Protocol> '+
-                      'RTSP '+
-                      '</tt:Protocol> '+
+                      '<trt:StreamSetup xsi:type="tt:StreamSetup"> '+
+                      '<tt:Stream>RTP-Unicast</tt:Stream> '+
+                      '<tt:Transport xsi:type="tt:Transport"> '+
+                      '<tt:Protocol>RTSP</tt:Protocol> '+
                       '</tt:Transport> '+
                       '</trt:StreamSetup> '+
-                      '<trt:ProfileToken>%s </trt:ProfileToken> '+
+                      '<trt:ProfileToken>%s</trt:ProfileToken> '+
                       '</trt:GetStreamUri> '+ END_SOAP_XML;
+                 
 begin
   Result := GetSoapXMLConnection + Format(GET_STREAMURI,[aToken]);
 end;

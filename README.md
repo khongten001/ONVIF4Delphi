@@ -4,13 +4,15 @@ Welcome to the ONVIF_WSDL project! This repository is dedicated to providing a c
 # Project Overview
 The ONVIF_WSDL project focuses on managing essential aspects of ONVIF protocols, offering functionality for:
 
-Device Information: Effortlessly retrieve and manage information about connected devices.
+**Device Information**: Effortlessly retrieve and manage information about connected devices.
 
-Profiles: Seamlessly handle ONVIF profiles, ensuring compatibility and easy integration.
+**Profiles**: Seamlessly handle ONVIF profiles, ensuring compatibility and easy integration.
 
-Capabilities: Access device capabilities.
+**Capabilities**: Access device capabilities.
 
-NetworkInterface: Access to network interface information.
+**NetworkInterface**: Access to network interface information.
+
+**StreamURI**: Access URI RTSP info
 
 The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for controlling camera movement.
 
@@ -33,6 +35,7 @@ The PTZ (Pan-Tilt-Zoom): functionality in this project provides support for cont
 The Imaging: functionality in this project is focused on video adjustments 
 
 - **Imaging Settings:** The feature provides users with the ability to retrieve information about the configuration of the imaging feature.
+- **Imaging options:** The feature provides users with the ability to retrieve information about then range (Min/Max) of the imaging settings feature.
 - **Focus:** supported in continuous and absolute mode.
 
 # How to Use
@@ -58,7 +61,7 @@ You can find an executable in the Demo\Bin folder with the implemented functions
 
 # Camera Library Testing
 
-This repository contains the results of testing the library with various camera models. The library has been successfully tested with different cameras from various brands.
+The library has been successfully tested with different cameras from various brands.
 
 ## Test Results
 
